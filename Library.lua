@@ -1,4 +1,3 @@
-where line at this UI it change the mouse icon
 local InputService = game:GetService('UserInputService');
 local TextService = game:GetService('TextService');
 local CoreGui = game:GetService('CoreGui');
