@@ -44,6 +44,14 @@ local Library = {
 
     Signals = {};
     ScreenGui = ScreenGui;
+
+    -- Add these properties right after other Library properties
+    CornerRadius = UDim.new(0, 4), -- Default corner radius for controls
+    MainCornerRadius = UDim.new(0, 6), -- Corner radius for main containers
+    BackgroundTransparency = 0, -- Default background transparency
+    ControlTransparency = 0, -- Transparency for controls
+    GroupboxTransparency = 0, -- Transparency for groupboxes
+    BorderSizePixel = 1,
 };
 
 local RainbowStep = 0
@@ -2064,7 +2072,7 @@ do
         });
 
         Library:AddToRegistry(HideBorderRight, {
-            BackgroundColor3 = 'AccentColor';
+            BackgroundColor3 = 'AccentColor',
         });
 
         local DisplayLabel = Library:CreateLabel({
@@ -2255,7 +2263,7 @@ do
 
         Library:AddToRegistry(DropdownInner, {
             BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         Library:Create('UIGradient', {
@@ -2332,7 +2340,7 @@ do
 
         Library:AddToRegistry(ListInner, {
             BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         local Scrolling = Library:Create('ScrollingFrame', {
@@ -2422,8 +2430,8 @@ do
                 });
 
                 Library:AddToRegistry(Button, {
-                    BackgroundColor3 = 'MainColor';
-                    BorderColor3 = 'OutlineColor';
+                    BackgroundColor3 = 'MainColor',
+                    BorderColor3 = 'OutlineColor',
                 });
 
                 local ButtonLabel = Library:Create('TextLabel', {
@@ -2814,7 +2822,7 @@ do
 
     Library:AddToRegistry(KeybindInner, {
         BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
+        BorderColor3 = 'OutlineColor',
     }, true);
 
     local ColorFrame = Library:Create('Frame', {
@@ -2826,7 +2834,7 @@ do
     });
 
     Library:AddToRegistry(ColorFrame, {
-        BackgroundColor3 = 'AccentColor';
+        BackgroundColor3 = 'AccentColor',
     }, true);
 
     local KeybindLabel = Library:CreateLabel({
@@ -2900,7 +2908,7 @@ function Library:Notify(Text, Time)
 
     Library:AddToRegistry(NotifyInner, {
         BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
+        BorderColor3 = 'OutlineColor',
     }, true);
 
     local InnerFrame = Library:Create('Frame', {
@@ -3516,14 +3524,6 @@ function Library:CreateWindow(...)
             Tab.Tabboxes[Info.Name or ''] = Tabbox;
 
             return Tabbox;
-        end;
-
-        function Tab:AddLeftTabbox(Name)
-            return Tab:AddTabbox({ Name = Name, Side = 1; });
-        end;
-
-        function Tab:AddRightTabbox(Name)
-            return Tab:AddTabbox({ Name = Name, Side = 2; });
         end;
 
         TabButton.InputBegan:Connect(function(Input)
