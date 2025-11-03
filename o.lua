@@ -2472,8 +2472,11 @@ end;
                     end;
 
                     ButtonLabel.TextColor3 = Selected and Library.AccentColor or Library.FontColor;
-                    Library.RegistryMap[ButtonLabel].Properties.TextColor3 = Selected and 'AccentColor' or 'FontColor';
-                end;
+                    if Library.RegistryMap[ButtonLabel] and Library.RegistryMap[ButtonLabel].Properties then
+    Library.RegistryMap[ButtonLabel].Properties.TextColor3 = Selected and 'AccentColor' or 'FontColor'
+end
+
+                    end;
 
                 ButtonLabel.InputBegan:Connect(function(Input)
                     if Input.UserInputType == Enum.UserInputType.MouseButton1 then
