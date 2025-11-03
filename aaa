@@ -282,8 +282,15 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         TextColor3 = 'FontColor',
     });
 
+    -- validate HoverInstance before trying to index/connect MouseEnter/MouseLeave
+    if not HoverInstance or typeof(HoverInstance) ~= 'Instance' or (not HoverInstance.IsA or not HoverInstance:IsA('GuiObject')) then
+        -- Hover target invalid: don't attempt to connect, just return the tooltip instance (non-interactive)
+        return Tooltip, Label
+    end
+
     local IsHovering = false
 
+    -- safe to connect because HoverInstance is a GuiObject
     HoverInstance.MouseEnter:Connect(function()
         if Library:MouseIsOverOpenedFrame() then
             return
@@ -294,7 +301,7 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         Tooltip.Position = UDim2.fromOffset(Mouse.X + 15, Mouse.Y + 12)
         Tooltip.Visible = true
 
-        while IsHovering do
+        while IsHovering and Tooltip.Parent do
             RunService.Heartbeat:Wait()
             Tooltip.Position = UDim2.fromOffset(Mouse.X + 15, Mouse.Y + 12)
         end
@@ -304,6 +311,8 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         IsHovering = false
         Tooltip.Visible = false
     end)
+
+    return Tooltip, Label
 end
 
 function Library:OnHighlight(HighlightInstance, Instance, Properties, PropertiesDefault)
@@ -2052,7 +2061,7 @@ do
 
         Library:AddToRegistry(SliderInner, {
             BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         local Fill = Library:Create('Frame', {
@@ -2078,7 +2087,7 @@ do
         });
 
         Library:AddToRegistry(HideBorderRight, {
-            BackgroundColor3 = 'AccentColor';
+            BackgroundColor3 = 'AccentColor',
         });
 
         local DisplayLabel = Library:CreateLabel({
@@ -2250,7 +2259,7 @@ do
         });
 
         Library:AddToRegistry(DropdownOuter, {
-            BorderColor3 = 'Black';
+            BorderColor3 = 'Black',
         });
 
         local DropdownInner = Library:Create('Frame', {
@@ -2450,7 +2459,7 @@ do
                 });
 
                 Library:AddToRegistry(Button, {
-                    BackgroundColor3 = 'MainColor';
+                    BackgroundColor3 = 'MainColor',
                     BorderColor3 = 'OutlineColor',
                 });
 
@@ -3141,7 +3150,7 @@ function Library:CreateWindow(...)
         });
 
         Library:AddToRegistry(TabButton, {
-            BackgroundColor3 = 'BackgroundColor';
+            BackgroundColor3 = 'BackgroundColor',
             BorderColor3 = 'OutlineColor',
         });
 
