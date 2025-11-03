@@ -654,13 +654,13 @@ function DrawingLib:CreateWindow(options)
                 Slider.Objects.Thumb.ZIndex = 10
                 
                 Slider.Objects.ThumbBorder = Drawing.new("Circle")
-                Slider.Objects.ThumbBorder.Radius = 6
+                Slider.Objects.ThumbBorder.Radius = 7
                 Slider.Objects.ThumbBorder.Position = Vector2.new(0, 0)
                 Slider.Objects.ThumbBorder.Color = Window.Theme.Border
-                Slider.Objects.ThumbBorder.Thickness = 1
-                Slider.Objects.ThumbBorder.Filled = false
+                Slider.Objects.ThumbBorder.Filled = true
+                Slider.Objects.ThumbBorder.Transparency = 0.3
                 Slider.Objects.ThumbBorder.Visible = false
-                Slider.Objects.ThumbBorder.ZIndex = 11
+                Slider.Objects.ThumbBorder.ZIndex = 9
                 
                 function Slider:GetHeight()
                     return 40
