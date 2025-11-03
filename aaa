@@ -1898,42 +1898,31 @@ do
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 6;
             Parent = ToggleOuter;
+
+            -- new style hints
+            Rounded = true;
+            CornerRadius = 4;
+            Shadow = false;
         });
 
         Library:AddToRegistry(ToggleInner, {
             BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
-        local ToggleLabel = Library:CreateLabel({
-            Size = UDim2.new(0, 216, 1, 0);
-            Position = UDim2.new(1, 6, 0, 0);
-            TextSize = 14;
-            Text = Info.Text;
-            TextXAlignment = Enum.TextXAlignment.Left;
-            ZIndex = 6;
+        -- sliding knob for a modern toggle look
+        local Knob = Library:Create('Frame', {
+            Size = UDim2.new(0, 9, 0, 9);
+            Position = UDim2.new(0, 2, 0.5, -4);
+            BackgroundColor3 = Color3.fromRGB(235, 238, 240);
+            BorderSizePixel = 0;
+            ZIndex = 7;
             Parent = ToggleInner;
-        });
 
-        Library:Create('UIListLayout', {
-            Padding = UDim.new(0, 4);
-            FillDirection = Enum.FillDirection.Horizontal;
-            HorizontalAlignment = Enum.HorizontalAlignment.Right;
-            SortOrder = Enum.SortOrder.LayoutOrder;
-            Parent = ToggleLabel;
+            Rounded = true;
+            CornerRadius = 6;
+            Shadow = false;
         });
-
-        local ToggleRegion = Library:Create('Frame', {
-            BackgroundTransparency = 1;
-            Size = UDim2.new(0, 170, 1, 0);
-            ZIndex = 8;
-            Parent = ToggleOuter;
-        });
-
-        Library:OnHighlight(ToggleRegion, ToggleOuter,
-            { BorderColor3 = 'AccentColor' },
-            { BorderColor3 = 'Black' }
-        );
 
         function Toggle:UpdateColors()
             Toggle:Display();
@@ -1949,6 +1938,10 @@ do
 
             Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
             Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
+
+            -- move knob
+            Knob.Position = Toggle.Value and UDim2.new(1, -11, 0.5, -4) or UDim2.new(0, 2, 0.5, -4);
+            Knob.BackgroundColor3 = Toggle.Value and Color3.fromRGB(255,255,255) or Color3.fromRGB(235,238,240);
         end;
 
         function Toggle:OnChanged(Func)
@@ -2267,11 +2260,16 @@ do
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 6;
             Parent = DropdownOuter;
+
+            -- new style hints
+            Rounded = true;
+            CornerRadius = 6;
+            Shadow = false;
         });
 
         Library:AddToRegistry(DropdownInner, {
             BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         Library:Create('UIGradient', {
@@ -2321,6 +2319,11 @@ do
             ZIndex = 20;
             Visible = false;
             Parent = ScreenGui;
+
+            -- style for popup
+            Rounded = true;
+            CornerRadius = 6;
+            Shadow = true;
         });
 
         local function RecalculateListPosition()
@@ -2344,11 +2347,15 @@ do
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 21;
             Parent = ListOuter;
+
+            Rounded = true;
+            CornerRadius = 6;
+            Shadow = false;
         });
 
         Library:AddToRegistry(ListInner, {
             BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         local Scrolling = Library:Create('ScrollingFrame', {
@@ -2435,17 +2442,20 @@ do
                     ZIndex = 23;
                     Active = true,
                     Parent = Scrolling;
+
+                    -- style each item
+                    Rounded = true;
+                    CornerRadius = 4;
+                    Shadow = false;
                 });
 
                 Library:AddToRegistry(Button, {
                     BackgroundColor3 = 'MainColor';
-                    BorderColor3 = 'OutlineColor';
+                    BorderColor3 = 'OutlineColor',
                 });
 
-                local ButtonLabel = Library:CreateLabel({
-                    Active = false;
-                    Size = UDim2.new(1, -6, 1, 0);
-                    Position = UDim2.new(0, 6, 0, 0);
+                local ButtonLabel = Library:Create('TextLabel', {
+                    Size = UDim2.new(1, 0, 1, 0);
                     TextSize = 14;
                     Text = Value;
                     TextXAlignment = Enum.TextXAlignment.Left;
@@ -2830,7 +2840,7 @@ do
 
     Library:AddToRegistry(KeybindInner, {
         BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
+        BorderColor3 = 'OutlineColor',
     }, true);
 
     local ColorFrame = Library:Create('Frame', {
@@ -2842,7 +2852,7 @@ do
     });
 
     Library:AddToRegistry(ColorFrame, {
-        BackgroundColor3 = 'AccentColor';
+        BackgroundColor3 = 'AccentColor',
     }, true);
 
     local KeybindLabel = Library:CreateLabel({
@@ -2916,7 +2926,7 @@ function Library:Notify(Text, Time)
 
     Library:AddToRegistry(NotifyInner, {
         BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
+        BorderColor3 = 'OutlineColor',
     }, true);
 
     local InnerFrame = Library:Create('Frame', {
@@ -2966,7 +2976,7 @@ function Library:Notify(Text, Time)
     });
 
     Library:AddToRegistry(LeftColor, {
-        BackgroundColor3 = 'AccentColor';
+        BackgroundColor3 = 'AccentColor',
     }, true);
 
     pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, XSize + 8 + 4, 0, YSize), 'Out', 'Quad', 0.4, true);
@@ -3034,7 +3044,7 @@ function Library:CreateWindow(...)
 
     Library:AddToRegistry(Inner, {
         BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'AccentColor';
+        BorderColor3 = 'AccentColor',
     });
 
     local WindowLabel = Library:CreateLabel({
@@ -3057,7 +3067,7 @@ function Library:CreateWindow(...)
 
     Library:AddToRegistry(MainSectionOuter, {
         BackgroundColor3 = 'BackgroundColor';
-        BorderColor3 = 'OutlineColor';
+        BorderColor3 = 'OutlineColor',
     });
 
     local MainSectionInner = Library:Create('Frame', {
@@ -3071,7 +3081,7 @@ function Library:CreateWindow(...)
     });
 
     Library:AddToRegistry(MainSectionInner, {
-        BackgroundColor3 = 'BackgroundColor';
+        BackgroundColor3 = 'BackgroundColor',
     });
 
     local TabArea = Library:Create('Frame', {
@@ -3101,7 +3111,7 @@ function Library:CreateWindow(...)
 
     Library:AddToRegistry(TabContainer, {
         BackgroundColor3 = 'MainColor';
-        BorderColor3 = 'OutlineColor';
+        BorderColor3 = 'OutlineColor',
     });
 
     function Window:SetWindowTitle(Title)
@@ -3122,11 +3132,17 @@ function Library:CreateWindow(...)
             Size = UDim2.new(0, TabButtonWidth + 8 + 4, 1, 0);
             ZIndex = 1;
             Parent = TabArea;
+
+            -- new tab button style
+            Rounded = true;
+            CornerRadius = 6;
+            Shadow = false;
+            Stroke = { Color = Library.OutlineColor, Thickness = 1 };
         });
 
         Library:AddToRegistry(TabButton, {
             BackgroundColor3 = 'BackgroundColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         local TabButtonLabel = Library:CreateLabel({
@@ -3138,17 +3154,17 @@ function Library:CreateWindow(...)
         });
 
         local Blocker = Library:Create('Frame', {
-            BackgroundColor3 = Library.MainColor;
+            BackgroundColor3 = Library.BackgroundColor;
             BorderSizePixel = 0;
             Position = UDim2.new(0, 0, 1, 0);
             Size = UDim2.new(1, 0, 0, 1);
-            BackgroundTransparency = 1;
+            Visible = false;
             ZIndex = 3;
             Parent = TabButton;
         });
 
         Library:AddToRegistry(Blocker, {
-            BackgroundColor3 = 'MainColor';
+            BackgroundColor3 = 'BackgroundColor',
         });
 
         local TabFrame = Library:Create('Frame', {
@@ -3246,7 +3262,7 @@ function Library:CreateWindow(...)
 
             Library:AddToRegistry(BoxOuter, {
                 BackgroundColor3 = 'BackgroundColor';
-                BorderColor3 = 'OutlineColor';
+                BorderColor3 = 'OutlineColor',
             });
 
             local BoxInner = Library:Create('Frame', {
@@ -3260,7 +3276,7 @@ function Library:CreateWindow(...)
             });
 
             Library:AddToRegistry(BoxInner, {
-                BackgroundColor3 = 'BackgroundColor';
+                BackgroundColor3 = 'BackgroundColor',
             });
 
             local Highlight = Library:Create('Frame', {
@@ -3272,7 +3288,7 @@ function Library:CreateWindow(...)
             });
 
             Library:AddToRegistry(Highlight, {
-                BackgroundColor3 = 'AccentColor';
+                BackgroundColor3 = 'AccentColor',
             });
 
             local GroupboxLabel = Library:CreateLabel({
@@ -3346,7 +3362,7 @@ function Library:CreateWindow(...)
 
             Library:AddToRegistry(BoxOuter, {
                 BackgroundColor3 = 'BackgroundColor';
-                BorderColor3 = 'OutlineColor';
+                BorderColor3 = 'OutlineColor',
             });
 
             local BoxInner = Library:Create('Frame', {
@@ -3360,7 +3376,7 @@ function Library:CreateWindow(...)
             });
 
             Library:AddToRegistry(BoxInner, {
-                BackgroundColor3 = 'BackgroundColor';
+                BackgroundColor3 = 'BackgroundColor',
             });
 
             local Highlight = Library:Create('Frame', {
@@ -3372,7 +3388,7 @@ function Library:CreateWindow(...)
             });
 
             Library:AddToRegistry(Highlight, {
-                BackgroundColor3 = 'AccentColor';
+                BackgroundColor3 = 'AccentColor',
             });
 
             local TabboxButtons = Library:Create('Frame', {
@@ -3399,10 +3415,14 @@ function Library:CreateWindow(...)
                     Size = UDim2.new(0.5, 0, 1, 0);
                     ZIndex = 6;
                     Parent = TabboxButtons;
+
+                    Rounded = true;
+                    CornerRadius = 6;
+                    Shadow = false;
                 });
 
                 Library:AddToRegistry(Button, {
-                    BackgroundColor3 = 'MainColor';
+                    BackgroundColor3 = 'MainColor',
                 });
 
                 local ButtonLabel = Library:CreateLabel({
@@ -3425,7 +3445,7 @@ function Library:CreateWindow(...)
                 });
 
                 Library:AddToRegistry(Block, {
-                    BackgroundColor3 = 'BackgroundColor';
+                    BackgroundColor3 = 'BackgroundColor',
                 });
 
                 local Container = Library:Create('Frame', {
