@@ -45,9 +45,10 @@ local Library = {
     Signals = {};
     ScreenGui = ScreenGui;
 
-    -- Add these properties right after other Library properties
-    CornerRadius = UDim.new(0, 4), -- Default corner radius for controls
-    MainCornerRadius = UDim.new(0, 6), -- Corner radius for main containers
+    -- Change these properties to use proper UDim values
+    CornerRadius = UDim.new(0, 4), -- Default corner radius for controls (4 pixels)
+    MainCornerRadius = UDim.new(0, 6), -- Corner radius for main containers (6 pixels)
+
     BackgroundTransparency = 0, -- Default background transparency
     ControlTransparency = 0, -- Transparency for controls
     GroupboxTransparency = 0, -- Transparency for groupboxes
@@ -1100,7 +1101,7 @@ do
 
         Library:AddToRegistry(ModeSelectInner, {
             BackgroundColor3 = 'BackgroundColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         Library:Create('UIListLayout', {
@@ -1329,7 +1330,7 @@ do
                 local AbsPos, AbsSize = ModeSelectOuter.AbsolutePosition, ModeSelectOuter.AbsoluteSize;
 
                 if Mouse.X < AbsPos.X or Mouse.X > AbsPos.X + AbsSize.X
-                    or Mouse.Y < (AbsPos.Y - 20 - 1) or Mouse.Y > AbsPos.Y + AbsSize.Y then
+                    or Mouse.Y < AbsPos.Y - 20 - 1 or Mouse.Y > AbsPos.Y + AbsSize.Y then
 
                     ModeSelectOuter.Visible = false;
                 end;
@@ -1700,7 +1701,7 @@ do
 
         Library:AddToRegistry(TextBoxInner, {
             BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         Library:OnHighlight(TextBoxOuter, TextBoxOuter,
@@ -2046,7 +2047,7 @@ do
 
         Library:AddToRegistry(SliderInner, {
             BackgroundColor3 = 'MainColor';
-            BorderColor3 = 'OutlineColor';
+            BorderColor3 = 'OutlineColor',
         });
 
         local Fill = Library:Create('Frame', {
@@ -2230,9 +2231,10 @@ do
         end
 
         for _, Element in next, Container:GetChildren() do
-            if not Element:IsA('UIListLayout') then
-                RelativeOffset = RelativeOffset + Element.Size.Y.Offset;
-            end;
+            if not Element:IsA('UIListLayout') and not Element:IsA('UICorner') then
+    RelativeOffset = RelativeOffset + Element.Size.Y.Offset;
+end;
+
         end;
 
         local DropdownOuter = Library:Create('Frame', {
@@ -2316,8 +2318,12 @@ do
         });
 
         local function RecalculateListPosition()
-            ListOuter.Position = UDim2.fromOffset(DropdownOuter.AbsolutePosition.X, DropdownOuter.AbsolutePosition.Y + DropdownOuter.AbsoluteSize.Y.Offset + 1);
-        end;
+    ListOuter.Position = UDim2.fromOffset(
+        DropdownOuter.AbsolutePosition.X,
+        DropdownOuter.AbsolutePosition.Y + DropdownOuter.AbsoluteSize.Y + 1
+    )
+end;
+
 
         local function RecalculateListSize(YSize)
             ListOuter.Size = UDim2.fromOffset(DropdownOuter.AbsoluteSize.X, YSize or (MAX_DROPDOWN_ITEMS * 20 + 2))
@@ -3304,9 +3310,10 @@ function Library:CreateWindow(...)
                 local Size = 0;
 
                 for _, Element in next, Groupbox.Container:GetChildren() do
-                    if (not Element:IsA('UIListLayout')) and Element.Visible then
-                        Size = Size + Element.Size.Y.Offset;
-                    end;
+                    if (not Element:IsA('UIListLayout')) and (not Element:IsA('UICorner')) and Element.Visible then
+    Size = Size + Element.Size.Y.Offset;
+end;
+
                 end;
 
                 BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
