@@ -1,0 +1,2351 @@
+--[[
+    Advanced Drawing UI Library
+    A beautiful, feature-rich UI library using only Drawing API
+    Created with modern aesthetics and smooth animations
+]]
+
+local DrawingLib = {}
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+
+-- Configuration
+local CONFIG = {
+    -- Theme Colors
+    MainColor = Color3.fromRGB(60, 60, 80),
+    SecondaryColor = Color3.fromRGB(45, 45, 65),
+    AccentColor = Color3.fromRGB(120, 120, 255),
+    TextColor = Color3.fromRGB(255, 255, 255),
+    BorderColor = Color3.fromRGB(80, 80, 100),
+    BackgroundColor = Color3.fromRGB(30, 30, 45),
+    HoverColor = Color3.fromRGB(70, 70, 90),
+    ActiveColor = Color3.fromRGB(140, 140, 255),
+    DisabledColor = Color3.fromRGB(100, 100, 120),
+    
+    -- Styling
+    CornerRadius = 6,
+    BorderThickness = 1,
+    Padding = 10,
+    Spacing = 5,
+    
+    -- Animation
+    AnimationSpeed = 0.15,
+    EasingStyle = "Quad",
+    
+    -- Fonts
+    FontSize = 14,
+    TitleFontSize = 16,
+    HeaderFontSize = 18,
+    
+    -- Shadows
+    ShadowEnabled = true,
+    ShadowTransparency = 0.7,
+    ShadowOffset = Vector2.new(2, 2),
+}
+
+-- Utility Functions
+local Utils = {}
+
+function Utils:Lerp(a, b, t)
+    return a + (b - a) * t
+end
+
+function Utils:LerpColor(c1, c2, t)
+    return Color3.new(
+        self:Lerp(c1.R, c2.R, t),
+        self:Lerp(c1.G, c2.G, t),
+        self:Lerp(c1.B, c2.B, t)
+    )
+end
+
+function Utils:IsMouseOver(pos, size)
+    local mousePos = UserInputService:GetMouseLocation()
+    return mousePos.X >= pos.X and mousePos.X <= pos.X + size.X and
+           mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + size.Y
+end
+
+function Utils:ClampVector2(vec, min, max)
+    return Vector2.new(
+        math.clamp(vec.X, min.X, max.X),
+        math.clamp(vec.Y, min.Y, max.Y)
+    )
+end
+
+function Utils:GenerateUID()
+    return HttpService:GenerateGUID(false)
+end
+
+-- Animation Handler
+local Animator = {}
+Animator.__index = Animator
+
+function Animator.new()
+    local self = setmetatable({}, Animator)
+    self.animations = {}
+    return self
+end
+
+function Animator:Animate(object, property, target, duration, callback)
+    local uid = Utils:GenerateUID()
+    local startTime = tick()
+    local startValue = object[property]
+    
+    self.animations[uid] = {
+        object = object,
+        property = property,
+        startValue = startValue,
+        targetValue = target,
+        duration = duration or CONFIG.AnimationSpeed,
+        startTime = startTime,
+        callback = callback
+    }
+    
+    return uid
+end
+
+function Animator:Update()
+    for uid, anim in pairs(self.animations) do
+        local elapsed = tick() - anim.startTime
+        local progress = math.min(elapsed / anim.duration, 1)
+        
+        -- Easing function (quad out)
+        local easedProgress = 1 - (1 - progress) * (1 - progress)
+        
+        if type(anim.startValue) == "number" then
+            anim.object[anim.property] = Utils:Lerp(anim.startValue, anim.targetValue, easedProgress)
+        elseif typeof(anim.startValue) == "Color3" then
+            anim.object[anim.property] = Utils:LerpColor(anim.startValue, anim.targetValue, easedProgress)
+        elseif typeof(anim.startValue) == "Vector2" then
+            anim.object[anim.property] = Vector2.new(
+                Utils:Lerp(anim.startValue.X, anim.targetValue.X, easedProgress),
+                Utils:Lerp(anim.startValue.Y, anim.targetValue.Y, easedProgress)
+            )
+        end
+        
+        if progress >= 1 then
+            if anim.callback then
+                anim.callback()
+            end
+            self.animations[uid] = nil
+        end
+    end
+end
+
+local globalAnimator = Animator.new()
+
+-- Base Drawing Object
+local DrawingObject = {}
+DrawingObject.__index = DrawingObject
+
+function DrawingObject.new(drawingType)
+    local self = setmetatable({}, DrawingObject)
+    self.instance = Drawing.new(drawingType)
+    self.children = {}
+    self.visible = true
+    return self
+end
+
+function DrawingObject:Set(properties)
+    for prop, value in pairs(properties) do
+        if self.instance and self.instance[prop] ~= nil then
+            self.instance[prop] = value
+        end
+    end
+end
+
+function DrawingObject:Destroy()
+    for _, child in pairs(self.children) do
+        if child.Destroy then
+            child:Destroy()
+        end
+    end
+    if self.instance then
+        self.instance:Remove()
+    end
+end
+
+function DrawingObject:SetVisible(visible)
+    self.visible = visible
+    if self.instance then
+        self.instance.Visible = visible
+    end
+    for _, child in pairs(self.children) do
+        if child.SetVisible then
+            child:SetVisible(visible)
+        end
+    end
+end
+
+-- Window Class
+local Window = {}
+Window.__index = Window
+
+function Window.new(title, size)
+    local self = setmetatable({}, Window)
+    
+    self.title = title or "UI Library"
+    self.size = size or Vector2.new(600, 400)
+    self.position = Vector2.new(100, 100)
+    self.dragging = false
+    self.dragOffset = Vector2.new(0, 0)
+    self.tabs = {}
+    self.currentTab = nil
+    self.objects = {}
+    self.minimized = false
+    
+    self:CreateWindow()
+    self:SetupDragging()
+    
+    return self
+end
+
+function Window:CreateWindow()
+    -- Shadow
+    if CONFIG.ShadowEnabled then
+        self.shadow = Drawing.new("Square")
+        self.shadow.Size = self.size + Vector2.new(4, 4)
+        self.shadow.Position = self.position + CONFIG.ShadowOffset
+        self.shadow.Color = Color3.fromRGB(0, 0, 0)
+        self.shadow.Transparency = CONFIG.ShadowTransparency
+        self.shadow.Filled = true
+        self.shadow.ZIndex = 1
+        table.insert(self.objects, self.shadow)
+    end
+    
+    -- Main Background
+    self.background = Drawing.new("Square")
+    self.background.Size = self.size
+    self.background.Position = self.position
+    self.background.Color = CONFIG.BackgroundColor
+    self.background.Filled = true
+    self.background.ZIndex = 2
+    table.insert(self.objects, self.background)
+    
+    -- Border
+    self.border = Drawing.new("Square")
+    self.border.Size = self.size
+    self.border.Position = self.position
+    self.border.Color = CONFIG.BorderColor
+    self.border.Filled = false
+    self.border.Thickness = CONFIG.BorderThickness
+    self.border.ZIndex = 10
+    table.insert(self.objects, self.border)
+    
+    -- Title Bar
+    self.titleBar = Drawing.new("Square")
+    self.titleBar.Size = Vector2.new(self.size.X, 35)
+    self.titleBar.Position = self.position
+    self.titleBar.Color = CONFIG.MainColor
+    self.titleBar.Filled = true
+    self.titleBar.ZIndex = 3
+    table.insert(self.objects, self.titleBar)
+    
+    -- Title Bar Border
+    self.titleBarBorder = Drawing.new("Line")
+    self.titleBarBorder.From = self.position + Vector2.new(0, 35)
+    self.titleBarBorder.To = self.position + Vector2.new(self.size.X, 35)
+    self.titleBarBorder.Color = CONFIG.BorderColor
+    self.titleBarBorder.Thickness = 1
+    self.titleBarBorder.ZIndex = 4
+    table.insert(self.objects, self.titleBarBorder)
+    
+    -- Title Text
+    self.titleText = Drawing.new("Text")
+    self.titleText.Text = self.title
+    self.titleText.Size = CONFIG.HeaderFontSize
+    self.titleText.Position = self.position + Vector2.new(CONFIG.Padding, 10)
+    self.titleText.Color = CONFIG.TextColor
+    self.titleText.Center = false
+    self.titleText.Outline = true
+    self.titleText.ZIndex = 5
+    table.insert(self.objects, self.titleText)
+    
+    -- Close Button
+    self.closeButton = self:CreateButton(
+        Vector2.new(self.size.X - 30, 7.5),
+        Vector2.new(20, 20),
+        "X",
+        function()
+            self:Destroy()
+        end
+    )
+    
+    -- Minimize Button
+    self.minimizeButton = self:CreateButton(
+        Vector2.new(self.size.X - 55, 7.5),
+        Vector2.new(20, 20),
+        "-",
+        function()
+            self:ToggleMinimize()
+        end
+    )
+    
+    -- Tab Container
+    self.tabContainer = Drawing.new("Square")
+    self.tabContainer.Size = Vector2.new(self.size.X, 30)
+    self.tabContainer.Position = self.position + Vector2.new(0, 35)
+    self.tabContainer.Color = CONFIG.SecondaryColor
+    self.tabContainer.Filled = true
+    self.tabContainer.ZIndex = 3
+    table.insert(self.objects, self.tabContainer)
+    
+    -- Content Area Background
+    self.contentBackground = Drawing.new("Square")
+    self.contentBackground.Size = Vector2.new(self.size.X, self.size.Y - 65)
+    self.contentBackground.Position = self.position + Vector2.new(0, 65)
+    self.contentBackground.Color = CONFIG.BackgroundColor
+    self.contentBackground.Filled = true
+    self.contentBackground.ZIndex = 2
+    table.insert(self.objects, self.contentBackground)
+end
+
+function Window:CreateButton(relativePos, size, text, callback)
+    local button = {}
+    local absolutePos = self.position + relativePos
+    
+    button.background = Drawing.new("Square")
+    button.background.Size = size
+    button.background.Position = absolutePos
+    button.background.Color = CONFIG.SecondaryColor
+    button.background.Filled = true
+    button.background.ZIndex = 6
+    
+    button.border = Drawing.new("Square")
+    button.border.Size = size
+    button.border.Position = absolutePos
+    button.border.Color = CONFIG.BorderColor
+    button.border.Filled = false
+    button.border.Thickness = 1
+    button.border.ZIndex = 7
+    
+    button.text = Drawing.new("Text")
+    button.text.Text = text
+    button.text.Size = CONFIG.FontSize
+    button.text.Position = absolutePos + Vector2.new(size.X / 2, size.Y / 2 - 7)
+    button.text.Color = CONFIG.TextColor
+    button.text.Center = true
+    button.text.Outline = true
+    button.text.ZIndex = 8
+    
+    button.isHovered = false
+    button.callback = callback
+    
+    table.insert(self.objects, button.background)
+    table.insert(self.objects, button.border)
+    table.insert(self.objects, button.text)
+    
+    return button
+end
+
+function Window:SetupDragging()
+    local connection
+    
+    UserInputService.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local mousePos = UserInputService:GetMouseLocation()
+            local titleBarBounds = {
+                pos = self.position,
+                size = Vector2.new(self.size.X - 80, 35)
+            }
+            
+            if Utils:IsMouseOver(titleBarBounds.pos, titleBarBounds.size) then
+                self.dragging = true
+                self.dragOffset = mousePos - self.position
+                
+                connection = RunService.RenderStepped:Connect(function()
+                    if self.dragging then
+                        local newPos = UserInputService:GetMouseLocation() - self.dragOffset
+                        self:SetPosition(newPos)
+                    end
+                end)
+            end
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            self.dragging = false
+            if connection then
+                connection:Disconnect()
+            end
+        end
+    end)
+end
+
+function Window:SetPosition(pos)
+    local delta = pos - self.position
+    self.position = pos
+    
+    for _, obj in pairs(self.objects) do
+        if obj.Position then
+            obj.Position = obj.Position + delta
+        end
+        if obj.From then
+            obj.From = obj.From + delta
+            obj.To = obj.To + delta
+        end
+    end
+    
+    for _, tab in pairs(self.tabs) do
+        tab:UpdatePosition()
+    end
+end
+
+function Window:ToggleMinimize()
+    self.minimized = not self.minimized
+    
+    if self.minimized then
+        self.contentBackground.Visible = false
+        self.tabContainer.Visible = false
+        for _, tab in pairs(self.tabs) do
+            tab:SetVisible(false)
+        end
+    else
+        self.contentBackground.Visible = true
+        self.tabContainer.Visible = true
+        if self.currentTab then
+            self.currentTab:SetVisible(true)
+        end
+    end
+end
+
+function Window:AddTab(name)
+    local tab = Tab.new(self, name, #self.tabs)
+    table.insert(self.tabs, tab)
+    
+    if not self.currentTab then
+        self.currentTab = tab
+        tab:SetVisible(true)
+    else
+        tab:SetVisible(false)
+    end
+    
+    return tab
+end
+
+function Window:SwitchTab(tab)
+    if self.currentTab then
+        self.currentTab:SetVisible(false)
+    end
+    self.currentTab = tab
+    tab:SetVisible(true)
+end
+
+function Window:Update()
+    -- Update button hovers
+    if self.closeButton then
+        local isHovered = Utils:IsMouseOver(
+            self.closeButton.background.Position,
+            self.closeButton.background.Size
+        )
+        
+        if isHovered ~= self.closeButton.isHovered then
+            self.closeButton.isHovered = isHovered
+            globalAnimator:Animate(
+                self.closeButton.background,
+                "Color",
+                isHovered and Color3.fromRGB(255, 60, 60) or CONFIG.SecondaryColor,
+                0.1
+            )
+        end
+        
+        if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+            if self.closeButton.callback then
+                self.closeButton.callback()
+            end
+        end
+    end
+    
+    if self.minimizeButton then
+        local isHovered = Utils:IsMouseOver(
+            self.minimizeButton.background.Position,
+            self.minimizeButton.background.Size
+        )
+        
+        if isHovered ~= self.minimizeButton.isHovered then
+            self.minimizeButton.isHovered = isHovered
+            globalAnimator:Animate(
+                self.minimizeButton.background,
+                "Color",
+                isHovered and CONFIG.HoverColor or CONFIG.SecondaryColor,
+                0.1
+            )
+        end
+        
+        if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+            if self.minimizeButton.callback then
+                task.wait(0.1)
+                self.minimizeButton.callback()
+            end
+        end
+    end
+    
+    -- Update tabs
+    for _, tab in pairs(self.tabs) do
+        tab:Update()
+    end
+end
+
+function Window:Destroy()
+    for _, obj in pairs(self.objects) do
+        if obj.Remove then
+            obj:Remove()
+        end
+    end
+    
+    for _, tab in pairs(self.tabs) do
+        tab:Destroy()
+    end
+end
+
+-- Tab Class
+Tab = {}
+Tab.__index = Tab
+
+function Tab.new(window, name, index)
+    local self = setmetatable({}, Tab)
+    
+    self.window = window
+    self.name = name
+    self.index = index
+    self.objects = {}
+    self.elements = {}
+    self.contentY = 0
+    
+    self:CreateTab()
+    
+    return self
+end
+
+function Tab:CreateTab()
+    local tabWidth = 120
+    local tabX = self.index * (tabWidth + CONFIG.Spacing)
+    
+    -- Tab Button Background
+    self.background = Drawing.new("Square")
+    self.background.Size = Vector2.new(tabWidth, 25)
+    self.background.Position = self.window.position + Vector2.new(tabX, 37.5)
+    self.background.Color = CONFIG.SecondaryColor
+    self.background.Filled = true
+    self.background.ZIndex = 4
+    table.insert(self.objects, self.background)
+    
+    -- Tab Button Border
+    self.border = Drawing.new("Square")
+    self.border.Size = Vector2.new(tabWidth, 25)
+    self.border.Position = self.window.position + Vector2.new(tabX, 37.5)
+    self.border.Color = CONFIG.BorderColor
+    self.border.Filled = false
+    self.border.Thickness = 1
+    self.border.ZIndex = 5
+    table.insert(self.objects, self.border)
+    
+    -- Tab Text
+    self.text = Drawing.new("Text")
+    self.text.Text = self.name
+    self.text.Size = CONFIG.FontSize
+    self.text.Position = self.window.position + Vector2.new(tabX + tabWidth / 2, 45)
+    self.text.Color = CONFIG.TextColor
+    self.text.Center = true
+    self.text.Outline = true
+    self.text.ZIndex = 6
+    table.insert(self.objects, self.text)
+    
+    self.isHovered = false
+    self.isActive = false
+end
+
+function Tab:UpdatePosition()
+    local tabWidth = 120
+    local tabX = self.index * (tabWidth + CONFIG.Spacing)
+    local basePos = self.window.position + Vector2.new(tabX, 37.5)
+    
+    self.background.Position = basePos
+    self.border.Position = basePos
+    self.text.Position = basePos + Vector2.new(tabWidth / 2, 7.5)
+    
+    for _, element in pairs(self.elements) do
+        element:UpdatePosition()
+    end
+end
+
+function Tab:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+    
+    for _, element in pairs(self.elements) do
+        element:SetVisible(visible)
+    end
+end
+
+function Tab:Update()
+    local isHovered = Utils:IsMouseOver(self.background.Position, self.background.Size)
+    
+    if isHovered ~= self.isHovered then
+        self.isHovered = isHovered
+        if not self.isActive then
+            globalAnimator:Animate(
+                self.background,
+                "Color",
+                isHovered and CONFIG.HoverColor or CONFIG.SecondaryColor,
+                0.1
+            )
+        end
+    end
+    
+    if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        task.wait(0.1)
+        self.window:SwitchTab(self)
+        self.isActive = true
+        self.background.Color = CONFIG.AccentColor
+    end
+    
+    for _, element in pairs(self.elements) do
+        if element.Update then
+            element:Update()
+        end
+    end
+end
+
+function Tab:AddButton(text, callback)
+    local button = Button.new(self, text, callback)
+    table.insert(self.elements, button)
+    self.contentY = self.contentY + 35 + CONFIG.Spacing
+    return button
+end
+
+function Tab:AddToggle(text, default, callback)
+    local toggle = Toggle.new(self, text, default, callback)
+    table.insert(self.elements, toggle)
+    self.contentY = self.contentY + 30 + CONFIG.Spacing
+    return toggle
+end
+
+function Tab:AddSlider(text, min, max, default, callback)
+    local slider = Slider.new(self, text, min, max, default, callback)
+    table.insert(self.elements, slider)
+    self.contentY = self.contentY + 50 + CONFIG.Spacing
+    return slider
+end
+
+function Tab:AddTextbox(text, placeholder, callback)
+    local textbox = Textbox.new(self, text, placeholder, callback)
+    table.insert(self.elements, textbox)
+    self.contentY = self.contentY + 55 + CONFIG.Spacing
+    return textbox
+end
+
+function Tab:AddDropdown(text, options, callback)
+    local dropdown = Dropdown.new(self, text, options, callback)
+    table.insert(self.elements, dropdown)
+    self.contentY = self.contentY + 30 + CONFIG.Spacing
+    return dropdown
+end
+
+function Tab:AddLabel(text)
+    local label = Label.new(self, text)
+    table.insert(self.elements, label)
+    self.contentY = self.contentY + 25 + CONFIG.Spacing
+    return label
+end
+
+function Tab:AddColorPicker(text, default, callback)
+    local colorPicker = ColorPicker.new(self, text, default, callback)
+    table.insert(self.elements, colorPicker)
+    self.contentY = self.contentY + 30 + CONFIG.Spacing
+    return colorPicker
+end
+
+function Tab:Destroy()
+    for _, obj in pairs(self.objects) do
+        if obj.Remove then
+            obj:Remove()
+        end
+    end
+    
+    for _, element in pairs(self.elements) do
+        if element.Destroy then
+            element:Destroy()
+        end
+    end
+end
+
+-- Button Element
+Button = {}
+Button.__index = Button
+
+function Button.new(tab, text, callback)
+    local self = setmetatable({}, Button)
+    
+    self.tab = tab
+    self.text = text
+    self.callback = callback
+    self.objects = {}
+    
+    self:Create()
+    
+    return self
+end
+
+function Button:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Background
+    self.background = Drawing.new("Square")
+    self.background.Size = Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2, 30)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    self.background.Color = CONFIG.SecondaryColor
+    self.background.Filled = true
+    self.background.ZIndex = 4
+    table.insert(self.objects, self.background)
+    
+    -- Border
+    self.border = Drawing.new("Square")
+    self.border.Size = self.background.Size
+    self.border.Position = self.background.Position
+    self.border.Color = CONFIG.BorderColor
+    self.border.Filled = false
+    self.border.Thickness = 1
+    self.border.ZIndex = 5
+    table.insert(self.objects, self.border)
+    
+    -- Text
+    self.textObj = Drawing.new("Text")
+    self.textObj.Text = self.text
+    self.textObj.Size = CONFIG.FontSize
+    self.textObj.Position = self.background.Position + Vector2.new(self.background.Size.X / 2, 8)
+    self.textObj.Color = CONFIG.TextColor
+    self.textObj.Center = true
+    self.textObj.Outline = true
+    self.textObj.ZIndex = 6
+    table.insert(self.objects, self.textObj)
+    
+    self.isHovered = false
+    self.lastClick = 0
+end
+
+function Button:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    local newPos = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    
+    self.background.Position = newPos
+    self.border.Position = newPos
+    self.textObj.Position = newPos + Vector2.new(self.background.Size.X / 2, 8)
+end
+
+function Button:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+end
+
+function Button:Update()
+    local isHovered = Utils:IsMouseOver(self.background.Position, self.background.Size)
+    
+    if isHovered ~= self.isHovered then
+        self.isHovered = isHovered
+        globalAnimator:Animate(
+            self.background,
+            "Color",
+            isHovered and CONFIG.HoverColor or CONFIG.SecondaryColor,
+            0.1
+        )
+    end
+    
+    if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        local currentTime = tick()
+        if currentTime - self.lastClick > 0.2 then
+            self.lastClick = currentTime
+            if self.callback then
+                self.callback()
+            end
+            globalAnimator:Animate(self.background, "Color", CONFIG.ActiveColor, 0.05, function()
+                globalAnimator:Animate(self.background, "Color", CONFIG.HoverColor, 0.1)
+            end)
+        end
+    end
+end
+
+function Button:Destroy()
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+end
+
+-- Toggle Element
+Toggle = {}
+Toggle.__index = Toggle
+
+function Toggle.new(tab, text, default, callback)
+    local self = setmetatable({}, Toggle)
+    
+    self.tab = tab
+    self.text = text
+    self.value = default or false
+    self.callback = callback
+    self.objects = {}
+    self.height = 30
+    
+    self:Create()
+    
+    return self
+end
+
+function Toggle:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Text Label
+    self.label = Drawing.new("Text")
+    self.label.Text = self.text
+    self.label.Size = CONFIG.FontSize
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 7)
+    self.label.Color = CONFIG.TextColor
+    self.label.Center = false
+    self.label.Outline = true
+    self.label.ZIndex = 6
+    table.insert(self.objects, self.label)
+    
+    -- Toggle Background
+    self.background = Drawing.new("Square")
+    self.background.Size = Vector2.new(40, 20)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2 - 40, yPos + 5)
+    self.background.Color = self.value and CONFIG.AccentColor or CONFIG.SecondaryColor
+    self.background.Filled = true
+    self.background.ZIndex = 4
+    table.insert(self.objects, self.background)
+    
+    -- Toggle Border
+    self.border = Drawing.new("Square")
+    self.border.Size = self.background.Size
+    self.border.Position = self.background.Position
+    self.border.Color = CONFIG.BorderColor
+    self.border.Filled = false
+    self.border.Thickness = 1
+    self.border.ZIndex = 5
+    table.insert(self.objects, self.border)
+    
+    -- Toggle Knob
+    self.knob = Drawing.new("Square")
+    self.knob.Size = Vector2.new(16, 16)
+    self.knob.Position = self.background.Position + Vector2.new(self.value and 22 or 2, 2)
+    self.knob.Color = CONFIG.TextColor
+    self.knob.Filled = true
+    self.knob.ZIndex = 6
+    table.insert(self.objects, self.knob)
+    
+    self.isHovered = false
+    self.lastClick = 0
+end
+
+function Toggle:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 7)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2 - 40, yPos + 5)
+    self.border.Position = self.background.Position
+    self.knob.Position = self.background.Position + Vector2.new(self.value and 22 or 2, 2)
+end
+
+function Toggle:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+end
+
+function Toggle:SetValue(value)
+    self.value = value
+    globalAnimator:Animate(
+        self.background,
+        "Color",
+        value and CONFIG.AccentColor or CONFIG.SecondaryColor,
+        0.15
+    )
+    globalAnimator:Animate(
+        self.knob,
+        "Position",
+        self.background.Position + Vector2.new(value and 22 or 2, 2),
+        0.15
+    )
+end
+
+function Toggle:Update()
+    local isHovered = Utils:IsMouseOver(self.background.Position, self.background.Size)
+    
+    if isHovered ~= self.isHovered then
+        self.isHovered = isHovered
+    end
+    
+    if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        local currentTime = tick()
+        if currentTime - self.lastClick > 0.2 then
+            self.lastClick = currentTime
+            self:SetValue(not self.value)
+            if self.callback then
+                self.callback(self.value)
+            end
+        end
+    end
+end
+
+function Toggle:Destroy()
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+end
+
+-- Slider Element
+Slider = {}
+Slider.__index = Slider
+
+function Slider.new(tab, text, min, max, default, callback)
+    local self = setmetatable({}, Slider)
+    
+    self.tab = tab
+    self.text = text
+    self.min = min
+    self.max = max
+    self.value = default or min
+    self.callback = callback
+    self.objects = {}
+    self.height = 50
+    self.dragging = false
+    
+    self:Create()
+    
+    return self
+end
+
+function Slider:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Text Label
+    self.label = Drawing.new("Text")
+    self.label.Text = self.text
+    self.label.Size = CONFIG.FontSize
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    self.label.Color = CONFIG.TextColor
+    self.label.Center = false
+    self.label.Outline = true
+    self.label.ZIndex = 6
+    table.insert(self.objects, self.label)
+    
+    -- Value Label
+    self.valueLabel = Drawing.new("Text")
+    self.valueLabel.Text = tostring(self.value)
+    self.valueLabel.Size = CONFIG.FontSize
+    self.valueLabel.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2, yPos)
+    self.valueLabel.Color = CONFIG.AccentColor
+    self.valueLabel.Center = false
+    self.valueLabel.Outline = true
+    self.valueLabel.ZIndex = 6
+    table.insert(self.objects, self.valueLabel)
+    
+    -- Slider Track
+    self.track = Drawing.new("Square")
+    self.track.Size = Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2, 6)
+    self.track.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 25)
+    self.track.Color = CONFIG.SecondaryColor
+    self.track.Filled = true
+    self.track.ZIndex = 4
+    table.insert(self.objects, self.track)
+    
+    -- Slider Track Border
+    self.trackBorder = Drawing.new("Square")
+    self.trackBorder.Size = self.track.Size
+    self.trackBorder.Position = self.track.Position
+    self.trackBorder.Color = CONFIG.BorderColor
+    self.trackBorder.Filled = false
+    self.trackBorder.Thickness = 1
+    self.trackBorder.ZIndex = 5
+    table.insert(self.objects, self.trackBorder)
+    
+    -- Slider Fill
+    local fillWidth = ((self.value - self.min) / (self.max - self.min)) * self.track.Size.X
+    self.fill = Drawing.new("Square")
+    self.fill.Size = Vector2.new(fillWidth, 6)
+    self.fill.Position = self.track.Position
+    self.fill.Color = CONFIG.AccentColor
+    self.fill.Filled = true
+    self.fill.ZIndex = 5
+    table.insert(self.objects, self.fill)
+    
+    -- Slider Knob
+    self.knob = Drawing.new("Circle")
+    self.knob.Radius = 8
+    self.knob.Position = self.track.Position + Vector2.new(fillWidth, 3)
+    self.knob.Color = CONFIG.TextColor
+    self.knob.Filled = true
+    self.knob.ZIndex = 6
+    table.insert(self.objects, self.knob)
+    
+    -- Knob Border
+    self.knobBorder = Drawing.new("Circle")
+    self.knobBorder.Radius = 8
+    self.knobBorder.Position = self.knob.Position
+    self.knobBorder.Color = CONFIG.AccentColor
+    self.knobBorder.Filled = false
+    self.knobBorder.Thickness = 2
+    self.knobBorder.ZIndex = 7
+    table.insert(self.objects, self.knobBorder)
+end
+
+function Slider:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    self.valueLabel.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2, yPos)
+    self.track.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 25)
+    self.trackBorder.Position = self.track.Position
+    self.fill.Position = self.track.Position
+    
+    local fillWidth = ((self.value - self.min) / (self.max - self.min)) * self.track.Size.X
+    self.knob.Position = self.track.Position + Vector2.new(fillWidth, 3)
+    self.knobBorder.Position = self.knob.Position
+end
+
+function Slider:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+end
+
+function Slider:SetValue(value)
+    self.value = math.clamp(value, self.min, self.max)
+    self.valueLabel.Text = string.format("%.2f", self.value)
+    
+    local fillWidth = ((self.value - self.min) / (self.max - self.min)) * self.track.Size.X
+    self.fill.Size = Vector2.new(fillWidth, 6)
+    self.knob.Position = self.track.Position + Vector2.new(fillWidth, 3)
+    self.knobBorder.Position = self.knob.Position
+end
+
+function Slider:Update()
+    local knobArea = {
+        pos = self.knob.Position - Vector2.new(self.knob.Radius, self.knob.Radius),
+        size = Vector2.new(self.knob.Radius * 2, self.knob.Radius * 2)
+    }
+    
+    local trackArea = {
+        pos = self.track.Position,
+        size = self.track.Size
+    }
+    
+    local isKnobHovered = Utils:IsMouseOver(knobArea.pos, knobArea.size)
+    local isTrackHovered = Utils:IsMouseOver(trackArea.pos, trackArea.size)
+    
+    if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        if isKnobHovered or (isTrackHovered and not self.dragging) then
+            self.dragging = true
+        end
+    else
+        self.dragging = false
+    end
+    
+    if self.dragging then
+        local mousePos = UserInputService:GetMouseLocation()
+        local relativeX = mousePos.X - self.track.Position.X
+        relativeX = math.clamp(relativeX, 0, self.track.Size.X)
+        
+        local percentage = relativeX / self.track.Size.X
+        local newValue = self.min + (self.max - self.min) * percentage
+        
+        if newValue ~= self.value then
+            self:SetValue(newValue)
+            if self.callback then
+                self.callback(self.value)
+            end
+        end
+    end
+end
+
+function Slider:Destroy()
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+end
+
+-- Textbox Element
+Textbox = {}
+Textbox.__index = Textbox
+
+function Textbox.new(tab, text, placeholder, callback)
+    local self = setmetatable({}, Textbox)
+    
+    self.tab = tab
+    self.text = text
+    self.placeholder = placeholder or ""
+    self.value = ""
+    self.callback = callback
+    self.objects = {}
+    self.height = 55
+    self.focused = false
+    self.cursorVisible = true
+    self.lastBlink = tick()
+    
+    self:Create()
+    
+    return self
+end
+
+function Textbox:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Text Label
+    self.label = Drawing.new("Text")
+    self.label.Text = self.text
+    self.label.Size = CONFIG.FontSize
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    self.label.Color = CONFIG.TextColor
+    self.label.Center = false
+    self.label.Outline = true
+    self.label.ZIndex = 6
+    table.insert(self.objects, self.label)
+    
+    -- Textbox Background
+    self.background = Drawing.new("Square")
+    self.background.Size = Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2, 30)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 20)
+    self.background.Color = CONFIG.SecondaryColor
+    self.background.Filled = true
+    self.background.ZIndex = 4
+    table.insert(self.objects, self.background)
+    
+    -- Textbox Border
+    self.border = Drawing.new("Square")
+    self.border.Size = self.background.Size
+    self.border.Position = self.background.Position
+    self.border.Color = CONFIG.BorderColor
+    self.border.Filled = false
+    self.border.Thickness = 1
+    self.border.ZIndex = 5
+    table.insert(self.objects, self.border)
+    
+    -- Text Display
+    self.textDisplay = Drawing.new("Text")
+    self.textDisplay.Text = self.placeholder
+    self.textDisplay.Size = CONFIG.FontSize
+    self.textDisplay.Position = self.background.Position + Vector2.new(8, 8)
+    self.textDisplay.Color = CONFIG.DisabledColor
+    self.textDisplay.Center = false
+    self.textDisplay.Outline = true
+    self.textDisplay.ZIndex = 6
+    table.insert(self.objects, self.textDisplay)
+    
+    -- Cursor
+    self.cursor = Drawing.new("Line")
+    self.cursor.From = self.background.Position + Vector2.new(8, 6)
+    self.cursor.To = self.background.Position + Vector2.new(8, 24)
+    self.cursor.Color = CONFIG.TextColor
+    self.cursor.Thickness = 2
+    self.cursor.Visible = false
+    self.cursor.ZIndex = 7
+    table.insert(self.objects, self.cursor)
+end
+
+function Textbox:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 20)
+    self.border.Position = self.background.Position
+    self.textDisplay.Position = self.background.Position + Vector2.new(8, 8)
+    self.cursor.From = self.background.Position + Vector2.new(8 + (#self.value * 7), 6)
+    self.cursor.To = self.background.Position + Vector2.new(8 + (#self.value * 7), 24)
+end
+
+function Textbox:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+end
+
+function Textbox:SetValue(value)
+    self.value = value
+    if self.value == "" then
+        self.textDisplay.Text = self.placeholder
+        self.textDisplay.Color = CONFIG.DisabledColor
+    else
+        self.textDisplay.Text = self.value
+        self.textDisplay.Color = CONFIG.TextColor
+    end
+    
+    self.cursor.From = self.background.Position + Vector2.new(8 + (#self.value * 7), 6)
+    self.cursor.To = self.background.Position + Vector2.new(8 + (#self.value * 7), 24)
+end
+
+function Textbox:Update()
+    local isHovered = Utils:IsMouseOver(self.background.Position, self.background.Size)
+    
+    if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        if not self.focused then
+            self.focused = true
+            self.border.Color = CONFIG.AccentColor
+            
+            self.inputConnection = UserInputService.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.Keyboard then
+                    if input.KeyCode == Enum.KeyCode.Backspace then
+                        if #self.value > 0 then
+                            self:SetValue(string.sub(self.value, 1, -2))
+                            if self.callback then
+                                self.callback(self.value)
+                            end
+                        end
+                    elseif input.KeyCode == Enum.KeyCode.Return then
+                        self.focused = false
+                        self.border.Color = CONFIG.BorderColor
+                        self.cursor.Visible = false
+                        if self.inputConnection then
+                            self.inputConnection:Disconnect()
+                        end
+                    else
+                        local char = UserInputService:GetStringForKeyCode(input.KeyCode)
+                        if char and char ~= "" and #self.value < 50 then
+                            self:SetValue(self.value .. char)
+                            if self.callback then
+                                self.callback(self.value)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    elseif not isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        if self.focused then
+            self.focused = false
+            self.border.Color = CONFIG.BorderColor
+            self.cursor.Visible = false
+            if self.inputConnection then
+                self.inputConnection:Disconnect()
+            end
+        end
+    end
+    
+    if self.focused then
+        if tick() - self.lastBlink > 0.5 then
+            self.cursorVisible = not self.cursorVisible
+            self.cursor.Visible = self.cursorVisible
+            self.lastBlink = tick()
+        end
+    end
+end
+
+function Textbox:Destroy()
+    if self.inputConnection then
+        self.inputConnection:Disconnect()
+    end
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+end
+
+-- Dropdown Element
+Dropdown = {}
+Dropdown.__index = Dropdown
+
+function Dropdown.new(tab, text, options, callback)
+    local self = setmetatable({}, Dropdown)
+    
+    self.tab = tab
+    self.text = text
+    self.options = options or {}
+    self.selected = self.options[1] or "None"
+    self.callback = callback
+    self.objects = {}
+    self.optionObjects = {}
+    self.height = 30
+    self.expanded = false
+    
+    self:Create()
+    
+    return self
+end
+
+function Dropdown:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Text Label
+    self.label = Drawing.new("Text")
+    self.label.Text = self.text
+    self.label.Size = CONFIG.FontSize
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 7)
+    self.label.Color = CONFIG.TextColor
+    self.label.Center = false
+    self.label.Outline = true
+    self.label.ZIndex = 6
+    table.insert(self.objects, self.label)
+    
+    -- Dropdown Background
+    self.background = Drawing.new("Square")
+    self.background.Size = Vector2.new(200, 25)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2 - 200, yPos + 2.5)
+    self.background.Color = CONFIG.SecondaryColor
+    self.background.Filled = true
+    self.background.ZIndex = 8
+    table.insert(self.objects, self.background)
+    
+    -- Dropdown Border
+    self.border = Drawing.new("Square")
+    self.border.Size = self.background.Size
+    self.border.Position = self.background.Position
+    self.border.Color = CONFIG.BorderColor
+    self.border.Filled = false
+    self.border.Thickness = 1
+    self.border.ZIndex = 9
+    table.insert(self.objects, self.border)
+    
+    -- Selected Text
+    self.selectedText = Drawing.new("Text")
+    self.selectedText.Text = self.selected
+    self.selectedText.Size = CONFIG.FontSize
+    self.selectedText.Position = self.background.Position + Vector2.new(8, 6)
+    self.selectedText.Color = CONFIG.TextColor
+    self.selectedText.Center = false
+    self.selectedText.Outline = true
+    self.selectedText.ZIndex = 10
+    table.insert(self.objects, self.selectedText)
+    
+    -- Arrow
+    self.arrow = Drawing.new("Text")
+    self.arrow.Text = "▼"
+    self.arrow.Size = 10
+    self.arrow.Position = self.background.Position + Vector2.new(180, 7)
+    self.arrow.Color = CONFIG.TextColor
+    self.arrow.Center = false
+    self.arrow.Outline = true
+    self.arrow.ZIndex = 10
+    table.insert(self.objects, self.arrow)
+    
+    self.isHovered = false
+end
+
+function Dropdown:CreateOptions()
+    for _, obj in pairs(self.optionObjects) do
+        obj:Remove()
+    end
+    self.optionObjects = {}
+    
+    for i, option in ipairs(self.options) do
+        local optionBg = Drawing.new("Square")
+        optionBg.Size = Vector2.new(200, 25)
+        optionBg.Position = self.background.Position + Vector2.new(0, 25 * i)
+        optionBg.Color = CONFIG.MainColor
+        optionBg.Filled = true
+        optionBg.ZIndex = 8
+        optionBg.Visible = self.expanded
+        table.insert(self.optionObjects, optionBg)
+        
+        local optionBorder = Drawing.new("Square")
+        optionBorder.Size = optionBg.Size
+        optionBorder.Position = optionBg.Position
+        optionBorder.Color = CONFIG.BorderColor
+        optionBorder.Filled = false
+        optionBorder.Thickness = 1
+        optionBorder.ZIndex = 9
+        optionBorder.Visible = self.expanded
+        table.insert(self.optionObjects, optionBorder)
+        
+        local optionText = Drawing.new("Text")
+        optionText.Text = option
+        optionText.Size = CONFIG.FontSize
+        optionText.Position = optionBg.Position + Vector2.new(8, 6)
+        optionText.Color = CONFIG.TextColor
+        optionText.Center = false
+        optionText.Outline = true
+        optionText.ZIndex = 10
+        optionText.Visible = self.expanded
+        table.insert(self.optionObjects, optionText)
+    end
+end
+
+function Dropdown:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 7)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2 - 200, yPos + 2.5)
+    self.border.Position = self.background.Position
+    self.selectedText.Position = self.background.Position + Vector2.new(8, 6)
+    self.arrow.Position = self.background.Position + Vector2.new(180, 7)
+    
+    for i = 1, #self.optionObjects, 3 do
+        local idx = math.floor((i - 1) / 3) + 1
+        if self.optionObjects[i] then
+            self.optionObjects[i].Position = self.background.Position + Vector2.new(0, 25 * idx)
+            self.optionObjects[i + 1].Position = self.optionObjects[i].Position
+            self.optionObjects[i + 2].Position = self.optionObjects[i].Position + Vector2.new(8, 6)
+        end
+    end
+end
+
+function Dropdown:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+    for _, obj in pairs(self.optionObjects) do
+        obj.Visible = visible and self.expanded
+    end
+end
+
+function Dropdown:SetValue(value)
+    self.selected = value
+    self.selectedText.Text = value
+    if self.callback then
+        self.callback(value)
+    end
+end
+
+function Dropdown:Update()
+    local isHovered = Utils:IsMouseOver(self.background.Position, self.background.Size)
+    
+    if isHovered ~= self.isHovered then
+        self.isHovered = isHovered
+        globalAnimator:Animate(
+            self.background,
+            "Color",
+            isHovered and CONFIG.HoverColor or CONFIG.SecondaryColor,
+            0.1
+        )
+    end
+    
+    if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        task.wait(0.1)
+        self.expanded = not self.expanded
+        
+        if self.expanded and #self.optionObjects == 0 then
+            self:CreateOptions()
+        end
+        
+        for _, obj in pairs(self.optionObjects) do
+            obj.Visible = self.expanded
+        end
+    end
+    
+    if self.expanded then
+        for i = 1, #self.optionObjects, 3 do
+            local idx = math.floor((i - 1) / 3) + 1
+            local optionBg = self.optionObjects[i]
+            
+            if optionBg then
+                local isOptionHovered = Utils:IsMouseOver(optionBg.Position, optionBg.Size)
+                
+                if isOptionHovered then
+                    optionBg.Color = CONFIG.HoverColor
+                    
+                    if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                        task.wait(0.1)
+                        self:SetValue(self.options[idx])
+                        self.expanded = false
+                        for _, obj in pairs(self.optionObjects) do
+                            obj.Visible = false
+                        end
+                    end
+                else
+                    optionBg.Color = CONFIG.MainColor
+                end
+            end
+        end
+    end
+end
+
+function Dropdown:Destroy()
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+    for _, obj in pairs(self.optionObjects) do
+        obj:Remove()
+    end
+end
+
+-- Label Element
+Label = {}
+Label.__index = Label
+
+function Label.new(tab, text)
+    local self = setmetatable({}, Label)
+    
+    self.tab = tab
+    self.text = text
+    self.objects = {}
+    self.height = 25
+    
+    self:Create()
+    
+    return self
+end
+
+function Label:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Label Text
+    self.label = Drawing.new("Text")
+    self.label.Text = self.text
+    self.label.Size = CONFIG.FontSize
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    self.label.Color = CONFIG.TextColor
+    self.label.Center = false
+    self.label.Outline = true
+    self.label.ZIndex = 6
+    table.insert(self.objects, self.label)
+end
+
+function Label:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+end
+
+function Label:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+end
+
+function Label:SetText(text)
+    self.text = text
+    self.label.Text = text
+end
+
+function Label:Update()
+    -- Labels don't need updates
+end
+
+function Label:Destroy()
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+end
+
+-- ColorPicker Element
+ColorPicker = {}
+ColorPicker.__index = ColorPicker
+
+function ColorPicker.new(tab, text, default, callback)
+    local self = setmetatable({}, ColorPicker)
+    
+    self.tab = tab
+    self.text = text
+    self.color = default or Color3.fromRGB(255, 255, 255)
+    self.callback = callback
+    self.objects = {}
+    self.height = 30
+    self.pickerOpen = false
+    self.pickerObjects = {}
+    
+    self:Create()
+    
+    return self
+end
+
+function ColorPicker:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Text Label
+    self.label = Drawing.new("Text")
+    self.label.Text = self.text
+    self.label.Size = CONFIG.FontSize
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 7)
+    self.label.Color = CONFIG.TextColor
+    self.label.Center = false
+    self.label.Outline = true
+    self.label.ZIndex = 6
+    table.insert(self.objects, self.label)
+    
+    -- Color Preview Background
+    self.previewBg = Drawing.new("Square")
+    self.previewBg.Size = Vector2.new(40, 20)
+    self.previewBg.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2 - 40, yPos + 5)
+    self.previewBg.Color = self.color
+    self.previewBg.Filled = true
+    self.previewBg.ZIndex = 4
+    table.insert(self.objects, self.previewBg)
+    
+    -- Color Preview Border
+    self.previewBorder = Drawing.new("Square")
+    self.previewBorder.Size = self.previewBg.Size
+    self.previewBorder.Position = self.previewBg.Position
+    self.previewBorder.Color = CONFIG.BorderColor
+    self.previewBorder.Filled = false
+    self.previewBorder.Thickness = 1
+    self.previewBorder.ZIndex = 5
+    table.insert(self.objects, self.previewBorder)
+    
+    self.isHovered = false
+end
+
+function ColorPicker:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 7)
+    self.previewBg.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2 - 40, yPos + 5)
+    self.previewBorder.Position = self.previewBg.Position
+end
+
+function ColorPicker:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+end
+
+function ColorPicker:SetColor(color)
+    self.color = color
+    self.previewBg.Color = color
+    if self.callback then
+        self.callback(color)
+    end
+end
+
+function ColorPicker:Update()
+    local isHovered = Utils:IsMouseOver(self.previewBg.Position, self.previewBg.Size)
+    
+    if isHovered ~= self.isHovered then
+        self.isHovered = isHovered
+    end
+    
+    -- Simple color picker toggle (full implementation would require HSV picker)
+    if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        task.wait(0.1)
+        -- Cycle through preset colors for demonstration
+        local presets = {
+            Color3.fromRGB(255, 0, 0),
+            Color3.fromRGB(0, 255, 0),
+            Color3.fromRGB(0, 0, 255),
+            Color3.fromRGB(255, 255, 0),
+            Color3.fromRGB(255, 0, 255),
+            Color3.fromRGB(0, 255, 255),
+            Color3.fromRGB(255, 255, 255)
+        }
+        
+        for i, preset in ipairs(presets) do
+            if self.color == preset then
+                self:SetColor(presets[(i % #presets) + 1])
+                return
+            end
+        end
+        self:SetColor(presets[1])
+    end
+end
+
+function ColorPicker:Destroy()
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+    for _, obj in pairs(self.pickerObjects) do
+        obj:Remove()
+    end
+end
+
+-- Section/Divider Element
+local Section = {}
+Section.__index = Section
+
+function Section.new(tab, title)
+    local self = setmetatable({}, Section)
+    
+    self.tab = tab
+    self.title = title
+    self.objects = {}
+    self.height = 40
+    
+    self:Create()
+    
+    return self
+end
+
+function Section:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Section Title
+    self.titleText = Drawing.new("Text")
+    self.titleText.Text = self.title
+    self.titleText.Size = CONFIG.TitleFontSize
+    self.titleText.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 5)
+    self.titleText.Color = CONFIG.AccentColor
+    self.titleText.Center = false
+    self.titleText.Outline = true
+    self.titleText.ZIndex = 6
+    table.insert(self.objects, self.titleText)
+    
+    -- Divider Line
+    self.divider = Drawing.new("Line")
+    self.divider.From = self.tab.window.position + contentStart + Vector2.new(0, yPos + 28)
+    self.divider.To = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2, yPos + 28)
+    self.divider.Color = CONFIG.BorderColor
+    self.divider.Thickness = 1
+    self.divider.ZIndex = 4
+    table.insert(self.objects, self.divider)
+end
+
+function Section:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    self.titleText.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 5)
+    self.divider.From = self.tab.window.position + contentStart + Vector2.new(0, yPos + 28)
+    self.divider.To = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2, yPos + 28)
+end
+
+function Section:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+end
+
+function Section:Update()
+    -- Sections don't need updates
+end
+
+function Section:Destroy()
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+end
+
+-- Add Section method to Tab
+function Tab:AddSection(title)
+    local section = Section.new(self, title)
+    table.insert(self.elements, section)
+    self.contentY = self.contentY + 40 + CONFIG.Spacing
+    return section
+end
+
+-- Keybind Element
+local Keybind = {}
+Keybind.__index = Keybind
+
+function Keybind.new(tab, text, default, callback)
+    local self = setmetatable({}, Keybind)
+    
+    self.tab = tab
+    self.text = text
+    self.key = default or Enum.KeyCode.Unknown
+    self.callback = callback
+    self.objects = {}
+    self.height = 30
+    self.listening = false
+    
+    self:Create()
+    
+    return self
+end
+
+function Keybind:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Text Label
+    self.label = Drawing.new("Text")
+    self.label.Text = self.text
+    self.label.Size = CONFIG.FontSize
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 7)
+    self.label.Color = CONFIG.TextColor
+    self.label.Center = false
+    self.label.Outline = true
+    self.label.ZIndex = 6
+    table.insert(self.objects, self.label)
+    
+    -- Keybind Display Background
+    self.background = Drawing.new("Square")
+    self.background.Size = Vector2.new(80, 20)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2 - 80, yPos + 5)
+    self.background.Color = CONFIG.SecondaryColor
+    self.background.Filled = true
+    self.background.ZIndex = 4
+    table.insert(self.objects, self.background)
+    
+    -- Keybind Display Border
+    self.border = Drawing.new("Square")
+    self.border.Size = self.background.Size
+    self.border.Position = self.background.Position
+    self.border.Color = CONFIG.BorderColor
+    self.border.Filled = false
+    self.border.Thickness = 1
+    self.border.ZIndex = 5
+    table.insert(self.objects, self.border)
+    
+    -- Keybind Text
+    self.keyText = Drawing.new("Text")
+    self.keyText.Text = self.key.Name
+    self.keyText.Size = CONFIG.FontSize
+    self.keyText.Position = self.background.Position + Vector2.new(40, 3)
+    self.keyText.Color = CONFIG.TextColor
+    self.keyText.Center = true
+    self.keyText.Outline = true
+    self.keyText.ZIndex = 6
+    table.insert(self.objects, self.keyText)
+    
+    self.isHovered = false
+end
+
+function Keybind:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos + 7)
+    self.background.Position = self.tab.window.position + contentStart + Vector2.new(self.tab.window.size.X - CONFIG.Padding * 2 - 80, yPos + 5)
+    self.border.Position = self.background.Position
+    self.keyText.Position = self.background.Position + Vector2.new(40, 3)
+end
+
+function Keybind:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+end
+
+function Keybind:SetKey(key)
+    self.key = key
+    self.keyText.Text = key.Name
+    if self.callback then
+        self.callback(key)
+    end
+end
+
+function Keybind:Update()
+    local isHovered = Utils:IsMouseOver(self.background.Position, self.background.Size)
+    
+    if isHovered ~= self.isHovered then
+        self.isHovered = isHovered
+        globalAnimator:Animate(
+            self.background,
+            "Color",
+            isHovered and CONFIG.HoverColor or CONFIG.SecondaryColor,
+            0.1
+        )
+    end
+    
+    if isHovered and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        if not self.listening then
+            task.wait(0.1)
+            self.listening = true
+            self.keyText.Text = "..."
+            self.background.Color = CONFIG.AccentColor
+            
+            self.keyConnection = UserInputService.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.Keyboard then
+                    self:SetKey(input.KeyCode)
+                    self.listening = false
+                    self.background.Color = CONFIG.SecondaryColor
+                    if self.keyConnection then
+                        self.keyConnection:Disconnect()
+                    end
+                end
+            end)
+        end
+    end
+end
+
+function Keybind:Destroy()
+    if self.keyConnection then
+        self.keyConnection:Disconnect()
+    end
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+end
+
+-- Add Keybind method to Tab
+function Tab:AddKeybind(text, default, callback)
+    local keybind = Keybind.new(self, text, default, callback)
+    table.insert(self.elements, keybind)
+    self.contentY = self.contentY + 30 + CONFIG.Spacing
+    return keybind
+end
+
+-- Multi-Select/List Element
+local MultiSelect = {}
+MultiSelect.__index = MultiSelect
+
+function MultiSelect.new(tab, text, options, callback)
+    local self = setmetatable({}, MultiSelect)
+    
+    self.tab = tab
+    self.text = text
+    self.options = options or {}
+    self.selected = {}
+    self.callback = callback
+    self.objects = {}
+    self.optionObjects = {}
+    self.height = 30 + (#options * 25)
+    self.expanded = true
+    
+    self:Create()
+    
+    return self
+end
+
+function MultiSelect:Create()
+    local yPos = self.tab.contentY
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    -- Text Label
+    self.label = Drawing.new("Text")
+    self.label.Text = self.text
+    self.label.Size = CONFIG.FontSize
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    self.label.Color = CONFIG.TextColor
+    self.label.Center = false
+    self.label.Outline = true
+    self.label.ZIndex = 6
+    table.insert(self.objects, self.label)
+    
+    -- Create option checkboxes
+    for i, option in ipairs(self.options) do
+        local optionY = yPos + 20 + ((i - 1) * 25)
+        
+        -- Checkbox Background
+        local checkBg = Drawing.new("Square")
+        checkBg.Size = Vector2.new(16, 16)
+        checkBg.Position = self.tab.window.position + contentStart + Vector2.new(10, optionY)
+        checkBg.Color = CONFIG.SecondaryColor
+        checkBg.Filled = true
+        checkBg.ZIndex = 4
+        table.insert(self.optionObjects, checkBg)
+        
+        -- Checkbox Border
+        local checkBorder = Drawing.new("Square")
+        checkBorder.Size = Vector2.new(16, 16)
+        checkBorder.Position = checkBg.Position
+        checkBorder.Color = CONFIG.BorderColor
+        checkBorder.Filled = false
+        checkBorder.Thickness = 1
+        checkBorder.ZIndex = 5
+        table.insert(self.optionObjects, checkBorder)
+        
+        -- Checkmark
+        local checkmark = Drawing.new("Text")
+        checkmark.Text = "✓"
+        checkmark.Size = 12
+        checkmark.Position = checkBg.Position + Vector2.new(8, 2)
+        checkmark.Color = CONFIG.AccentColor
+        checkmark.Center = true
+        checkmark.Outline = true
+        checkmark.Visible = false
+        checkmark.ZIndex = 6
+        table.insert(self.optionObjects, checkmark)
+        
+        -- Option Text
+        local optionText = Drawing.new("Text")
+        optionText.Text = option
+        optionText.Size = CONFIG.FontSize
+        optionText.Position = checkBg.Position + Vector2.new(25, 1)
+        optionText.Color = CONFIG.TextColor
+        optionText.Center = false
+        optionText.Outline = true
+        optionText.ZIndex = 6
+        table.insert(self.optionObjects, optionText)
+    end
+end
+
+function MultiSelect:UpdatePosition()
+    local yPos = 0
+    for i, element in pairs(self.tab.elements) do
+        if element == self then
+            break
+        end
+        yPos = yPos + (element.height or 35) + CONFIG.Spacing
+    end
+    
+    local contentStart = Vector2.new(CONFIG.Padding, 75 + CONFIG.Padding)
+    
+    self.label.Position = self.tab.window.position + contentStart + Vector2.new(0, yPos)
+    
+    for i = 1, #self.optionObjects, 4 do
+        local optionIdx = math.floor((i - 1) / 4) + 1
+        local optionY = yPos + 20 + ((optionIdx - 1) * 25)
+        
+        local checkBg = self.optionObjects[i]
+        local checkBorder = self.optionObjects[i + 1]
+        local checkmark = self.optionObjects[i + 2]
+        local optionText = self.optionObjects[i + 3]
+        
+        if checkBg then
+            checkBg.Position = self.tab.window.position + contentStart + Vector2.new(10, optionY)
+            checkBorder.Position = checkBg.Position
+            checkmark.Position = checkBg.Position + Vector2.new(8, 2)
+            optionText.Position = checkBg.Position + Vector2.new(25, 1)
+        end
+    end
+end
+
+function MultiSelect:SetVisible(visible)
+    for _, obj in pairs(self.objects) do
+        obj.Visible = visible
+    end
+    for _, obj in pairs(self.optionObjects) do
+        obj.Visible = visible
+    end
+end
+
+function MultiSelect:ToggleOption(option)
+    local index = table.find(self.selected, option)
+    if index then
+        table.remove(self.selected, index)
+    else
+        table.insert(self.selected, option)
+    end
+    
+    if self.callback then
+        self.callback(self.selected)
+    end
+end
+
+function MultiSelect:Update()
+    for i = 1, #self.optionObjects, 4 do
+        local optionIdx = math.floor((i - 1) / 4) + 1
+        local checkBg = self.optionObjects[i]
+        local checkmark = self.optionObjects[i + 2]
+        local option = self.options[optionIdx]
+        
+        if checkBg then
+            local isHovered = Utils:IsMouseOver(checkBg.Position, checkBg.Size)
+            
+            if isHovered then
+                checkBg.Color = CONFIG.HoverColor
+                
+                if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                    task.wait(0.1)
+                    self:ToggleOption(option)
+                    checkmark.Visible = table.find(self.selected, option) ~= nil
+                end
+            else
+                checkBg.Color = CONFIG.SecondaryColor
+            end
+            
+            checkmark.Visible = table.find(self.selected, option) ~= nil
+        end
+    end
+end
+
+function MultiSelect:Destroy()
+    for _, obj in pairs(self.objects) do
+        obj:Remove()
+    end
+    for _, obj in pairs(self.optionObjects) do
+        obj:Remove()
+    end
+end
+
+-- Add MultiSelect method to Tab
+function Tab:AddMultiSelect(text, options, callback)
+    local multiSelect = MultiSelect.new(self, text, options, callback)
+    table.insert(self.elements, multiSelect)
+    self.contentY = self.contentY + multiSelect.height + CONFIG.Spacing
+    return multiSelect
+end
+
+-- Theme Manager
+local ThemeManager = {}
+ThemeManager.__index = ThemeManager
+
+function ThemeManager.new()
+    local self = setmetatable({}, ThemeManager)
+    self.themes = {
+        Dark = {
+            MainColor = Color3.fromRGB(60, 60, 80),
+            SecondaryColor = Color3.fromRGB(45, 45, 65),
+            AccentColor = Color3.fromRGB(120, 120, 255),
+            TextColor = Color3.fromRGB(255, 255, 255),
+            BorderColor = Color3.fromRGB(80, 80, 100),
+            BackgroundColor = Color3.fromRGB(30, 30, 45),
+            HoverColor = Color3.fromRGB(70, 70, 90),
+            ActiveColor = Color3.fromRGB(140, 140, 255),
+            DisabledColor = Color3.fromRGB(100, 100, 120),
+        },
+        Light = {
+            MainColor = Color3.fromRGB(220, 220, 235),
+            SecondaryColor = Color3.fromRGB(235, 235, 250),
+            AccentColor = Color3.fromRGB(80, 80, 200),
+            TextColor = Color3.fromRGB(20, 20, 20),
+            BorderColor = Color3.fromRGB(180, 180, 200),
+            BackgroundColor = Color3.fromRGB(245, 245, 255),
+            HoverColor = Color3.fromRGB(210, 210, 230),
+            ActiveColor = Color3.fromRGB(100, 100, 220),
+            DisabledColor = Color3.fromRGB(160, 160, 180),
+        },
+        Ocean = {
+            MainColor = Color3.fromRGB(30, 60, 90),
+            SecondaryColor = Color3.fromRGB(40, 70, 100),
+            AccentColor = Color3.fromRGB(0, 180, 255),
+            TextColor = Color3.fromRGB(255, 255, 255),
+            BorderColor = Color3.fromRGB(50, 100, 150),
+            BackgroundColor = Color3.fromRGB(20, 40, 60),
+            HoverColor = Color3.fromRGB(50, 80, 110),
+            ActiveColor = Color3.fromRGB(20, 200, 255),
+            DisabledColor = Color3.fromRGB(60, 90, 120),
+        },
+        Forest = {
+            MainColor = Color3.fromRGB(40, 70, 50),
+            SecondaryColor = Color3.fromRGB(50, 80, 60),
+            AccentColor = Color3.fromRGB(100, 200, 100),
+            TextColor = Color3.fromRGB(255, 255, 255),
+            BorderColor = Color3.fromRGB(60, 100, 70),
+            BackgroundColor = Color3.fromRGB(25, 45, 35),
+            HoverColor = Color3.fromRGB(60, 90, 70),
+            ActiveColor = Color3.fromRGB(120, 220, 120),
+            DisabledColor = Color3.fromRGB(70, 100, 80),
+        },
+        Sunset = {
+            MainColor = Color3.fromRGB(90, 50, 70),
+            SecondaryColor = Color3.fromRGB(100, 60, 80),
+            AccentColor = Color3.fromRGB(255, 150, 100),
+            TextColor = Color3.fromRGB(255, 255, 255),
+            BorderColor = Color3.fromRGB(120, 70, 90),
+            BackgroundColor = Color3.fromRGB(60, 30, 50),
+            HoverColor = Color3.fromRGB(110, 70, 90),
+            ActiveColor = Color3.fromRGB(255, 170, 120),
+            DisabledColor = Color3.fromRGB(110, 80, 100),
+        }
+    }
+    return self
+end
+
+function ThemeManager:ApplyTheme(themeName)
+    local theme = self.themes[themeName]
+    if theme then
+        for key, value in pairs(theme) do
+            CONFIG[key] = value
+        end
+    end
+end
+
+-- Save Manager
+local SaveManager = {}
+SaveManager.__index = SaveManager
+
+function SaveManager.new()
+    local self = setmetatable({}, SaveManager)
+    self.saves = {}
+    return self
+end
+
+function SaveManager:SaveConfig(name, config)
+    self.saves[name] = config
+    print("Configuration '" .. name .. "' saved successfully!")
+end
+
+function SaveManager:LoadConfig(name)
+    if self.saves[name] then
+        print("Configuration '" .. name .. "' loaded successfully!")
+        return self.saves[name]
+    else
+        warn("Configuration '" .. name .. "' not found!")
+        return nil
+    end
+end
+
+function SaveManager:DeleteConfig(name)
+    if self.saves[name] then
+        self.saves[name] = nil
+        print("Configuration '" .. name .. "' deleted successfully!")
+    else
+        warn("Configuration '" .. name .. "' not found!")
+    end
+end
+
+function SaveManager:GetConfigList()
+    local list = {}
+    for name, _ in pairs(self.saves) do
+        table.insert(list, name)
+    end
+    return list
+end
+
+-- Main Library Interface
+function DrawingLib:CreateWindow(title, size)
+    local window = Window.new(title, size)
+    
+    -- Start update loop
+    RunService.RenderStepped:Connect(function()
+        globalAnimator:Update()
+        window:Update()
+    end)
+    
+    return window
+end
+
+function DrawingLib:CreateThemeManager()
+    return ThemeManager.new()
+end
+
+function DrawingLib:CreateSaveManager()
+    return SaveManager.new()
+end
+
+function DrawingLib:SetTheme(themeName)
+    local themeManager = ThemeManager.new()
+    themeManager:ApplyTheme(themeName)
+end
+
+-- Notification System
+local NotificationManager = {}
+NotificationManager.__index = NotificationManager
+NotificationManager.notifications = {}
+NotificationManager.nextY = 10
+
+function NotificationManager.new()
+    local self = setmetatable({}, NotificationManager)
+    return self
+end
+
+function NotificationManager:CreateNotification(title, message, duration)
+    local notification = {}
+    notification.objects = {}
+    duration = duration or 3
+    
+    local width = 300
+    local height = 70
+    local x = game:GetService("GuiService"):GetScreenResolution().X - width - 20
+    local y = self.nextY
+    
+    self.nextY = self.nextY + height + 10
+    
+    -- Background
+    notification.background = Drawing.new("Square")
+    notification.background.Size = Vector2.new(width, height)
+    notification.background.Position = Vector2.new(x + width, y)
+    notification.background.Color = CONFIG.MainColor
+    notification.background.Filled = true
+    notification.background.ZIndex = 50
+    table.insert(notification.objects, notification.background)
+    
+    -- Border
+    notification.border = Drawing.new("Square")
+    notification.border.Size = Vector2.new(width, height)
+    notification.border.Position = Vector2.new(x + width, y)
+    notification.border.Color = CONFIG.AccentColor
+    notification.border.Filled = false
+    notification.border.Thickness = 2
+    notification.border.ZIndex = 51
+    table.insert(notification.objects, notification.border)
+    
+    -- Title
+    notification.title = Drawing.new("Text")
+    notification.title.Text = title
+    notification.title.Size = CONFIG.TitleFontSize
+    notification.title.Position = Vector2.new(x + width + 10, y + 10)
+    notification.title.Color = CONFIG.TextColor
+    notification.title.Center = false
+    notification.title.Outline = true
+    notification.title.ZIndex = 52
+    table.insert(notification.objects, notification.title)
+    
+    -- Message
+    notification.message = Drawing.new("Text")
+    notification.message.Text = message
+    notification.message.Size = CONFIG.FontSize
+    notification.message.Position = Vector2.new(x + width + 10, y + 35)
+    notification.message.Color = CONFIG.TextColor
+    notification.message.Center = false
+    notification.message.Outline = true
+    notification.message.ZIndex = 52
+    table.insert(notification.objects, notification.message)
+    
+    -- Slide in animation
+    globalAnimator:Animate(notification.background, "Position", Vector2.new(x, y), 0.3)
+    globalAnimator:Animate(notification.border, "Position", Vector2.new(x, y), 0.3)
+    globalAnimator:Animate(notification.title, "Position", Vector2.new(x + 10, y + 10), 0.3)
+    globalAnimator:Animate(notification.message, "Position", Vector2.new(x + 10, y + 35), 0.3)
+    
+    -- Auto-remove after duration
+    task.delay(duration, function()
+        -- Slide out animation
+        globalAnimator:Animate(notification.background, "Position", Vector2.new(x + width, y), 0.3)
+        globalAnimator:Animate(notification.border, "Position", Vector2.new(x + width, y), 0.3)
+        globalAnimator:Animate(notification.title, "Position", Vector2.new(x + width + 10, y + 10), 0.3)
+        globalAnimator:Animate(notification.message, "Position", Vector2.new(x + width + 10, y + 35), 0.3, function()
+            for _, obj in pairs(notification.objects) do
+                obj:Remove()
+            end
+            self.nextY = self.nextY - height - 10
+        end)
+    end)
+    
+    table.insert(self.notifications, notification)
+    return notification
+end
+
+function DrawingLib:Notify(title, message, duration)
+    local manager = NotificationManager.new()
+    return manager:CreateNotification(title, message, duration)
+end
+
+-- Return the library
+return DrawingLib
