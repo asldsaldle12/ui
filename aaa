@@ -1,0 +1,1643 @@
+-- Enhanced Drawing UI Library
+-- Inspired by Linoria but with better visuals and details
+
+local DrawingLib = {}
+DrawingLib.__index = DrawingLib
+
+-- Utility Functions
+local function HSVtoRGB(h, s, v)
+    local r, g, b
+    local i = math.floor(h * 6)
+    local f = h * 6 - i
+    local p = v * (1 - s)
+    local q = v * (1 - f * s)
+    local t = v * (1 - (1 - f) * s)
+    i = i % 6
+    
+    if i == 0 then r, g, b = v, t, p
+    elseif i == 1 then r, g, b = q, v, p
+    elseif i == 2 then r, g, b = p, v, t
+    elseif i == 3 then r, g, b = p, q, v
+    elseif i == 4 then r, g, b = t, p, v
+    elseif i == 5 then r, g, b = v, p, q
+    end
+    
+    return Color3.new(r, g, b)
+end
+
+local function Lerp(a, b, t)
+    return a + (b - a) * t
+end
+
+local function IsMouseOver(x, y, w, h, mousePos)
+    return mousePos.X >= x and mousePos.X <= x + w and mousePos.Y >= y and mousePos.Y <= y + h
+end
+
+-- Theme System
+local Themes = {
+    Dark = {
+        Background = Color3.fromRGB(20, 20, 25),
+        TopBar = Color3.fromRGB(25, 25, 30),
+        Section = Color3.fromRGB(28, 28, 33),
+        Element = Color3.fromRGB(35, 35, 40),
+        ElementHover = Color3.fromRGB(40, 40, 45),
+        Accent = Color3.fromRGB(100, 150, 255),
+        AccentHover = Color3.fromRGB(120, 170, 255),
+        Text = Color3.fromRGB(220, 220, 225),
+        TextDark = Color3.fromRGB(150, 150, 155),
+        Border = Color3.fromRGB(45, 45, 50),
+        Success = Color3.fromRGB(80, 200, 120),
+        Warning = Color3.fromRGB(255, 180, 80),
+        Error = Color3.fromRGB(255, 100, 100)
+    }
+}
+
+-- Main Window Class
+function DrawingLib:CreateWindow(options)
+    local Window = {
+        Title = options.Title or "Drawing UI Library",
+        Size = options.Size or Vector2.new(550, 600),
+        Position = options.Position or Vector2.new(100, 100),
+        Theme = Themes[options.Theme or "Dark"],
+        Tabs = {},
+        CurrentTab = nil,
+        Dragging = false,
+        DragOffset = Vector2.new(0, 0),
+        Visible = true,
+        Animations = {},
+        FocusedElement = nil
+    }
+    
+    -- Drawing Objects
+    Window.Objects = {}
+    
+    -- Main Background with Shadow
+    Window.Objects.Shadow = Drawing.new("Square")
+    Window.Objects.Shadow.Size = Window.Size + Vector2.new(10, 10)
+    Window.Objects.Shadow.Position = Window.Position - Vector2.new(5, 5)
+    Window.Objects.Shadow.Color = Color3.fromRGB(0, 0, 0)
+    Window.Objects.Shadow.Transparency = 0.8
+    Window.Objects.Shadow.Filled = true
+    Window.Objects.Shadow.Visible = true
+    Window.Objects.Shadow.ZIndex = 1
+    
+    -- Main Background
+    Window.Objects.Background = Drawing.new("Square")
+    Window.Objects.Background.Size = Window.Size
+    Window.Objects.Background.Position = Window.Position
+    Window.Objects.Background.Color = Window.Theme.Background
+    Window.Objects.Background.Filled = true
+    Window.Objects.Background.Visible = true
+    Window.Objects.Background.ZIndex = 2
+    
+    -- Background Border
+    Window.Objects.BackgroundBorder = Drawing.new("Square")
+    Window.Objects.BackgroundBorder.Size = Window.Size
+    Window.Objects.BackgroundBorder.Position = Window.Position
+    Window.Objects.BackgroundBorder.Color = Window.Theme.Border
+    Window.Objects.BackgroundBorder.Thickness = 1
+    Window.Objects.BackgroundBorder.Filled = false
+    Window.Objects.BackgroundBorder.Visible = true
+    Window.Objects.BackgroundBorder.ZIndex = 3
+    
+    -- Top Bar
+    Window.Objects.TopBar = Drawing.new("Square")
+    Window.Objects.TopBar.Size = Vector2.new(Window.Size.X, 35)
+    Window.Objects.TopBar.Position = Window.Position
+    Window.Objects.TopBar.Color = Window.Theme.TopBar
+    Window.Objects.TopBar.Filled = true
+    Window.Objects.TopBar.Visible = true
+    Window.Objects.TopBar.ZIndex = 4
+    
+    -- Top Bar Border
+    Window.Objects.TopBarBorder = Drawing.new("Line")
+    Window.Objects.TopBarBorder.From = Window.Position + Vector2.new(0, 35)
+    Window.Objects.TopBarBorder.To = Window.Position + Vector2.new(Window.Size.X, 35)
+    Window.Objects.TopBarBorder.Color = Window.Theme.Accent
+    Window.Objects.TopBarBorder.Thickness = 2
+    Window.Objects.TopBarBorder.Visible = true
+    Window.Objects.TopBarBorder.ZIndex = 5
+    
+    -- Title Text
+    Window.Objects.Title = Drawing.new("Text")
+    Window.Objects.Title.Text = Window.Title
+    Window.Objects.Title.Size = 16
+    Window.Objects.Title.Position = Window.Position + Vector2.new(12, 10)
+    Window.Objects.Title.Color = Window.Theme.Text
+    Window.Objects.Title.Center = false
+    Window.Objects.Title.Outline = true
+    Window.Objects.Title.OutlineColor = Color3.fromRGB(0, 0, 0)
+    Window.Objects.Title.Visible = true
+    Window.Objects.Title.ZIndex = 6
+    Window.Objects.Title.Font = 2
+    
+    -- Close Button
+    Window.Objects.CloseButton = Drawing.new("Square")
+    Window.Objects.CloseButton.Size = Vector2.new(25, 25)
+    Window.Objects.CloseButton.Position = Window.Position + Vector2.new(Window.Size.X - 30, 5)
+    Window.Objects.CloseButton.Color = Window.Theme.Element
+    Window.Objects.CloseButton.Filled = true
+    Window.Objects.CloseButton.Visible = true
+    Window.Objects.CloseButton.ZIndex = 6
+    
+    Window.Objects.CloseButtonX1 = Drawing.new("Line")
+    Window.Objects.CloseButtonX1.From = Window.Objects.CloseButton.Position + Vector2.new(7, 7)
+    Window.Objects.CloseButtonX1.To = Window.Objects.CloseButton.Position + Vector2.new(18, 18)
+    Window.Objects.CloseButtonX1.Color = Window.Theme.Text
+    Window.Objects.CloseButtonX1.Thickness = 2
+    Window.Objects.CloseButtonX1.Visible = true
+    Window.Objects.CloseButtonX1.ZIndex = 7
+    
+    Window.Objects.CloseButtonX2 = Drawing.new("Line")
+    Window.Objects.CloseButtonX2.From = Window.Objects.CloseButton.Position + Vector2.new(18, 7)
+    Window.Objects.CloseButtonX2.To = Window.Objects.CloseButton.Position + Vector2.new(7, 18)
+    Window.Objects.CloseButtonX2.Color = Window.Theme.Text
+    Window.Objects.CloseButtonX2.Thickness = 2
+    Window.Objects.CloseButtonX2.Visible = true
+    Window.Objects.CloseButtonX2.ZIndex = 7
+    
+    -- Tab Container
+    Window.Objects.TabContainer = Drawing.new("Square")
+    Window.Objects.TabContainer.Size = Vector2.new(140, Window.Size.Y - 35)
+    Window.Objects.TabContainer.Position = Window.Position + Vector2.new(0, 35)
+    Window.Objects.TabContainer.Color = Window.Theme.Section
+    Window.Objects.TabContainer.Filled = true
+    Window.Objects.TabContainer.Visible = true
+    Window.Objects.TabContainer.ZIndex = 3
+    
+    Window.Objects.TabContainerBorder = Drawing.new("Line")
+    Window.Objects.TabContainerBorder.From = Window.Position + Vector2.new(140, 35)
+    Window.Objects.TabContainerBorder.To = Window.Position + Vector2.new(140, Window.Size.Y)
+    Window.Objects.TabContainerBorder.Color = Window.Theme.Border
+    Window.Objects.TabContainerBorder.Thickness = 1
+    Window.Objects.TabContainerBorder.Visible = true
+    Window.Objects.TabContainerBorder.ZIndex = 4
+    
+    -- Methods
+    function Window:UpdatePositions()
+        Window.Objects.Shadow.Position = Window.Position - Vector2.new(5, 5)
+        Window.Objects.Background.Position = Window.Position
+        Window.Objects.BackgroundBorder.Position = Window.Position
+        Window.Objects.TopBar.Position = Window.Position
+        Window.Objects.TopBarBorder.From = Window.Position + Vector2.new(0, 35)
+        Window.Objects.TopBarBorder.To = Window.Position + Vector2.new(Window.Size.X, 35)
+        Window.Objects.Title.Position = Window.Position + Vector2.new(12, 10)
+        Window.Objects.CloseButton.Position = Window.Position + Vector2.new(Window.Size.X - 30, 5)
+        Window.Objects.CloseButtonX1.From = Window.Objects.CloseButton.Position + Vector2.new(7, 7)
+        Window.Objects.CloseButtonX1.To = Window.Objects.CloseButton.Position + Vector2.new(18, 18)
+        Window.Objects.CloseButtonX2.From = Window.Objects.CloseButton.Position + Vector2.new(18, 7)
+        Window.Objects.CloseButtonX2.To = Window.Objects.CloseButton.Position + Vector2.new(7, 18)
+        Window.Objects.TabContainer.Position = Window.Position + Vector2.new(0, 35)
+        Window.Objects.TabContainerBorder.From = Window.Position + Vector2.new(140, 35)
+        Window.Objects.TabContainerBorder.To = Window.Position + Vector2.new(140, Window.Size.Y)
+        
+        for _, tab in pairs(Window.Tabs) do
+            tab:UpdatePositions()
+        end
+    end
+    
+    function Window:AddTab(name)
+        local Tab = {
+            Name = name,
+            Window = Window,
+            Index = #Window.Tabs + 1,
+            Sections = {},
+            Active = false,
+            Objects = {}
+        }
+        
+        local yPos = 45 + (#Window.Tabs * 40)
+        
+        -- Tab Button Background
+        Tab.Objects.Background = Drawing.new("Square")
+        Tab.Objects.Background.Size = Vector2.new(130, 35)
+        Tab.Objects.Background.Position = Window.Position + Vector2.new(5, yPos)
+        Tab.Objects.Background.Color = Window.Theme.Element
+        Tab.Objects.Background.Filled = true
+        Tab.Objects.Background.Visible = true
+        Tab.Objects.Background.ZIndex = 5
+        
+        -- Tab Button Text
+        Tab.Objects.Text = Drawing.new("Text")
+        Tab.Objects.Text.Text = name
+        Tab.Objects.Text.Size = 14
+        Tab.Objects.Text.Position = Window.Position + Vector2.new(10, yPos + 10)
+        Tab.Objects.Text.Color = Window.Theme.TextDark
+        Tab.Objects.Text.Center = false
+        Tab.Objects.Text.Outline = true
+        Tab.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+        Tab.Objects.Text.Visible = true
+        Tab.Objects.Text.ZIndex = 6
+        Tab.Objects.Text.Font = 2
+        
+        -- Tab Indicator
+        Tab.Objects.Indicator = Drawing.new("Square")
+        Tab.Objects.Indicator.Size = Vector2.new(3, 35)
+        Tab.Objects.Indicator.Position = Window.Position + Vector2.new(2, yPos)
+        Tab.Objects.Indicator.Color = Window.Theme.Accent
+        Tab.Objects.Indicator.Filled = true
+        Tab.Objects.Indicator.Visible = false
+        Tab.Objects.Indicator.ZIndex = 7
+        
+        function Tab:UpdatePositions()
+            local yPos = 45 + ((Tab.Index - 1) * 40)
+            Tab.Objects.Background.Position = Window.Position + Vector2.new(5, yPos)
+            Tab.Objects.Text.Position = Window.Position + Vector2.new(10, yPos + 10)
+            Tab.Objects.Indicator.Position = Window.Position + Vector2.new(2, yPos)
+            
+            for _, section in pairs(Tab.Sections) do
+                section:UpdatePositions()
+            end
+        end
+        
+        function Tab:Activate()
+            -- Deactivate all tabs
+            for _, otherTab in pairs(Window.Tabs) do
+                otherTab.Active = false
+                otherTab.Objects.Background.Color = Window.Theme.Element
+                otherTab.Objects.Text.Color = Window.Theme.TextDark
+                otherTab.Objects.Indicator.Visible = false
+                
+                for _, section in pairs(otherTab.Sections) do
+                    section:Hide()
+                end
+            end
+            
+            -- Activate this tab
+            Tab.Active = true
+            Tab.Objects.Background.Color = Window.Theme.ElementHover
+            Tab.Objects.Text.Color = Window.Theme.Text
+            Tab.Objects.Indicator.Visible = true
+            Window.CurrentTab = Tab
+            
+            for _, section in pairs(Tab.Sections) do
+                section:Show()
+            end
+        end
+        
+        function Tab:AddSection(options)
+            local Section = {
+                Name = options.Name or "Section",
+                Side = options.Side or "Left",
+                Tab = Tab,
+                Elements = {},
+                Objects = {},
+                Visible = false
+            }
+            
+            local sideOffset = Section.Side == "Left" and 150 or 355
+            local sectionCount = 0
+            for _, s in pairs(Tab.Sections) do
+                if s.Side == Section.Side then
+                    sectionCount = sectionCount + 1
+                end
+            end
+            
+            local yOffset = 45 + (sectionCount * 10)
+            for _, s in pairs(Tab.Sections) do
+                if s.Side == Section.Side then
+                    yOffset = yOffset + s:GetHeight() + 10
+                end
+            end
+            
+            Section.BasePosition = Window.Position + Vector2.new(sideOffset, yOffset)
+            
+            -- Section Background
+            Section.Objects.Background = Drawing.new("Square")
+            Section.Objects.Background.Size = Vector2.new(185, 40)
+            Section.Objects.Background.Position = Section.BasePosition
+            Section.Objects.Background.Color = Window.Theme.Section
+            Section.Objects.Background.Filled = true
+            Section.Objects.Background.Visible = false
+            Section.Objects.Background.ZIndex = 5
+            
+            -- Section Border
+            Section.Objects.Border = Drawing.new("Square")
+            Section.Objects.Border.Size = Vector2.new(185, 40)
+            Section.Objects.Border.Position = Section.BasePosition
+            Section.Objects.Border.Color = Window.Theme.Border
+            Section.Objects.Border.Thickness = 1
+            Section.Objects.Border.Filled = false
+            Section.Objects.Border.Visible = false
+            Section.Objects.Border.ZIndex = 6
+            
+            -- Section Title
+            Section.Objects.Title = Drawing.new("Text")
+            Section.Objects.Title.Text = Section.Name
+            Section.Objects.Title.Size = 14
+            Section.Objects.Title.Position = Section.BasePosition + Vector2.new(8, 8)
+            Section.Objects.Title.Color = Window.Theme.Text
+            Section.Objects.Title.Center = false
+            Section.Objects.Title.Outline = true
+            Section.Objects.Title.OutlineColor = Color3.fromRGB(0, 0, 0)
+            Section.Objects.Title.Visible = false
+            Section.Objects.Title.ZIndex = 7
+            Section.Objects.Title.Font = 2
+            
+            -- Section Title Underline
+            Section.Objects.TitleUnderline = Drawing.new("Line")
+            Section.Objects.TitleUnderline.From = Section.BasePosition + Vector2.new(8, 25)
+            Section.Objects.TitleUnderline.To = Section.BasePosition + Vector2.new(177, 25)
+            Section.Objects.TitleUnderline.Color = Window.Theme.Border
+            Section.Objects.TitleUnderline.Thickness = 1
+            Section.Objects.TitleUnderline.Visible = false
+            Section.Objects.TitleUnderline.ZIndex = 6
+            
+            function Section:GetHeight()
+                local height = 40
+                for _, element in pairs(Section.Elements) do
+                    height = height + element:GetHeight()
+                end
+                return height
+            end
+            
+            function Section:UpdatePositions()
+                local sideOffset = Section.Side == "Left" and 150 or 355
+                local sectionCount = 0
+                local yOffset = 45
+                
+                for _, s in pairs(Tab.Sections) do
+                    if s.Side == Section.Side and s ~= Section then
+                        if s.Index < Section.Index then
+                            yOffset = yOffset + s:GetHeight() + 10
+                        end
+                    end
+                end
+                
+                Section.BasePosition = Window.Position + Vector2.new(sideOffset, yOffset)
+                
+                local totalHeight = Section:GetHeight()
+                Section.Objects.Background.Position = Section.BasePosition
+                Section.Objects.Background.Size = Vector2.new(185, totalHeight)
+                Section.Objects.Border.Position = Section.BasePosition
+                Section.Objects.Border.Size = Vector2.new(185, totalHeight)
+                Section.Objects.Title.Position = Section.BasePosition + Vector2.new(8, 8)
+                Section.Objects.TitleUnderline.From = Section.BasePosition + Vector2.new(8, 25)
+                Section.Objects.TitleUnderline.To = Section.BasePosition + Vector2.new(177, 25)
+                
+                local elementY = 30
+                for _, element in pairs(Section.Elements) do
+                    element:UpdatePosition(Section.BasePosition + Vector2.new(8, elementY))
+                    elementY = elementY + element:GetHeight()
+                end
+            end
+            
+            function Section:Show()
+                Section.Visible = true
+                Section.Objects.Background.Visible = true
+                Section.Objects.Border.Visible = true
+                Section.Objects.Title.Visible = true
+                Section.Objects.TitleUnderline.Visible = true
+                
+                for _, element in pairs(Section.Elements) do
+                    element:Show()
+                end
+            end
+            
+            function Section:Hide()
+                Section.Visible = false
+                Section.Objects.Background.Visible = false
+                Section.Objects.Border.Visible = false
+                Section.Objects.Title.Visible = false
+                Section.Objects.TitleUnderline.Visible = false
+                
+                for _, element in pairs(Section.Elements) do
+                    element:Hide()
+                end
+            end
+            
+            -- Element Creation Methods
+            function Section:AddToggle(options)
+                local Toggle = {
+                    Name = options.Name or "Toggle",
+                    Default = options.Default or false,
+                    Callback = options.Callback or function() end,
+                    Value = options.Default or false,
+                    Section = Section,
+                    Objects = {},
+                    Visible = false,
+                    Hovered = false
+                }
+                
+                -- Toggle Background
+                Toggle.Objects.Background = Drawing.new("Square")
+                Toggle.Objects.Background.Size = Vector2.new(169, 25)
+                Toggle.Objects.Background.Position = Vector2.new(0, 0)
+                Toggle.Objects.Background.Color = Window.Theme.Element
+                Toggle.Objects.Background.Filled = true
+                Toggle.Objects.Background.Visible = false
+                Toggle.Objects.Background.ZIndex = 8
+                
+                -- Toggle Text
+                Toggle.Objects.Text = Drawing.new("Text")
+                Toggle.Objects.Text.Text = Toggle.Name
+                Toggle.Objects.Text.Size = 13
+                Toggle.Objects.Text.Position = Vector2.new(0, 0)
+                Toggle.Objects.Text.Color = Window.Theme.Text
+                Toggle.Objects.Text.Center = false
+                Toggle.Objects.Text.Outline = true
+                Toggle.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Toggle.Objects.Text.Visible = false
+                Toggle.Objects.Text.ZIndex = 9
+                Toggle.Objects.Text.Font = 2
+                
+                -- Toggle Box
+                Toggle.Objects.Box = Drawing.new("Square")
+                Toggle.Objects.Box.Size = Vector2.new(15, 15)
+                Toggle.Objects.Box.Position = Vector2.new(0, 0)
+                Toggle.Objects.Box.Color = Window.Theme.Element
+                Toggle.Objects.Box.Filled = true
+                Toggle.Objects.Box.Visible = false
+                Toggle.Objects.Box.ZIndex = 9
+                
+                Toggle.Objects.BoxBorder = Drawing.new("Square")
+                Toggle.Objects.BoxBorder.Size = Vector2.new(15, 15)
+                Toggle.Objects.BoxBorder.Position = Vector2.new(0, 0)
+                Toggle.Objects.BoxBorder.Color = Window.Theme.Border
+                Toggle.Objects.BoxBorder.Thickness = 1
+                Toggle.Objects.BoxBorder.Filled = false
+                Toggle.Objects.BoxBorder.Visible = false
+                Toggle.Objects.BoxBorder.ZIndex = 10
+                
+                -- Toggle Checkmark
+                Toggle.Objects.Check1 = Drawing.new("Line")
+                Toggle.Objects.Check1.Thickness = 2
+                Toggle.Objects.Check1.Color = Window.Theme.Accent
+                Toggle.Objects.Check1.Visible = false
+                Toggle.Objects.Check1.ZIndex = 11
+                
+                Toggle.Objects.Check2 = Drawing.new("Line")
+                Toggle.Objects.Check2.Thickness = 2
+                Toggle.Objects.Check2.Color = Window.Theme.Accent
+                Toggle.Objects.Check2.Visible = false
+                Toggle.Objects.Check2.ZIndex = 11
+                
+                function Toggle:GetHeight()
+                    return 30
+                end
+                
+                function Toggle:UpdatePosition(pos)
+                    Toggle.Objects.Background.Position = pos
+                    Toggle.Objects.Text.Position = pos + Vector2.new(5, 6)
+                    Toggle.Objects.Box.Position = pos + Vector2.new(149, 5)
+                    Toggle.Objects.BoxBorder.Position = pos + Vector2.new(149, 5)
+                    
+                    local checkPos = pos + Vector2.new(149, 5)
+                    Toggle.Objects.Check1.From = checkPos + Vector2.new(3, 8)
+                    Toggle.Objects.Check1.To = checkPos + Vector2.new(6, 11)
+                    Toggle.Objects.Check2.From = checkPos + Vector2.new(6, 11)
+                    Toggle.Objects.Check2.To = checkPos + Vector2.new(12, 4)
+                end
+                
+                function Toggle:Show()
+                    Toggle.Visible = true
+                    Toggle.Objects.Background.Visible = true
+                    Toggle.Objects.Text.Visible = true
+                    Toggle.Objects.Box.Visible = true
+                    Toggle.Objects.BoxBorder.Visible = true
+                    if Toggle.Value then
+                        Toggle.Objects.Check1.Visible = true
+                        Toggle.Objects.Check2.Visible = true
+                    end
+                end
+                
+                function Toggle:Hide()
+                    Toggle.Visible = false
+                    Toggle.Objects.Background.Visible = false
+                    Toggle.Objects.Text.Visible = false
+                    Toggle.Objects.Box.Visible = false
+                    Toggle.Objects.BoxBorder.Visible = false
+                    Toggle.Objects.Check1.Visible = false
+                    Toggle.Objects.Check2.Visible = false
+                end
+                
+                function Toggle:SetValue(value)
+                    Toggle.Value = value
+                    Toggle.Objects.Check1.Visible = value and Toggle.Visible
+                    Toggle.Objects.Check2.Visible = value and Toggle.Visible
+                    Toggle.Objects.Box.Color = value and Window.Theme.Accent or Window.Theme.Element
+                    pcall(Toggle.Callback, value)
+                end
+                
+                table.insert(Section.Elements, Toggle)
+                return Toggle
+            end
+            
+            function Section:AddButton(options)
+                local Button = {
+                    Name = options.Name or "Button",
+                    Callback = options.Callback or function() end,
+                    Section = Section,
+                    Objects = {},
+                    Visible = false,
+                    Hovered = false
+                }
+                
+                Button.Objects.Background = Drawing.new("Square")
+                Button.Objects.Background.Size = Vector2.new(169, 28)
+                Button.Objects.Background.Position = Vector2.new(0, 0)
+                Button.Objects.Background.Color = Window.Theme.Accent
+                Button.Objects.Background.Filled = true
+                Button.Objects.Background.Visible = false
+                Button.Objects.Background.ZIndex = 8
+                
+                Button.Objects.Border = Drawing.new("Square")
+                Button.Objects.Border.Size = Vector2.new(169, 28)
+                Button.Objects.Border.Position = Vector2.new(0, 0)
+                Button.Objects.Border.Color = Window.Theme.Border
+                Button.Objects.Border.Thickness = 1
+                Button.Objects.Border.Filled = false
+                Button.Objects.Border.Visible = false
+                Button.Objects.Border.ZIndex = 9
+                
+                Button.Objects.Text = Drawing.new("Text")
+                Button.Objects.Text.Text = Button.Name
+                Button.Objects.Text.Size = 13
+                Button.Objects.Text.Position = Vector2.new(0, 0)
+                Button.Objects.Text.Color = Window.Theme.Text
+                Button.Objects.Text.Center = true
+                Button.Objects.Text.Outline = true
+                Button.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Button.Objects.Text.Visible = false
+                Button.Objects.Text.ZIndex = 10
+                Button.Objects.Text.Font = 2
+                
+                function Button:GetHeight()
+                    return 33
+                end
+                
+                function Button:UpdatePosition(pos)
+                    Button.Objects.Background.Position = pos
+                    Button.Objects.Border.Position = pos
+                    Button.Objects.Text.Position = pos + Vector2.new(84.5, 8)
+                end
+                
+                function Button:Show()
+                    Button.Visible = true
+                    Button.Objects.Background.Visible = true
+                    Button.Objects.Border.Visible = true
+                    Button.Objects.Text.Visible = true
+                end
+                
+                function Button:Hide()
+                    Button.Visible = false
+                    Button.Objects.Background.Visible = false
+                    Button.Objects.Border.Visible = false
+                    Button.Objects.Text.Visible = false
+                end
+                
+                table.insert(Section.Elements, Button)
+                return Button
+            end
+            
+            function Section:AddSlider(options)
+                local Slider = {
+                    Name = options.Name or "Slider",
+                    Min = options.Min or 0,
+                    Max = options.Max or 100,
+                    Default = options.Default or 50,
+                    Callback = options.Callback or function() end,
+                    Suffix = options.Suffix or "",
+                    Value = options.Default or 50,
+                    Section = Section,
+                    Objects = {},
+                    Visible = false,
+                    Dragging = false
+                }
+                
+                Slider.Objects.Text = Drawing.new("Text")
+                Slider.Objects.Text.Text = Slider.Name
+                Slider.Objects.Text.Size = 13
+                Slider.Objects.Text.Position = Vector2.new(0, 0)
+                Slider.Objects.Text.Color = Window.Theme.Text
+                Slider.Objects.Text.Center = false
+                Slider.Objects.Text.Outline = true
+                Slider.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Slider.Objects.Text.Visible = false
+                Slider.Objects.Text.ZIndex = 8
+                Slider.Objects.Text.Font = 2
+                
+                Slider.Objects.ValueText = Drawing.new("Text")
+                Slider.Objects.ValueText.Text = tostring(Slider.Value) .. Slider.Suffix
+                Slider.Objects.ValueText.Size = 12
+                Slider.Objects.ValueText.Position = Vector2.new(0, 0)
+                Slider.Objects.ValueText.Color = Window.Theme.Accent
+                Slider.Objects.ValueText.Center = false
+                Slider.Objects.ValueText.Outline = true
+                Slider.Objects.ValueText.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Slider.Objects.ValueText.Visible = false
+                Slider.Objects.ValueText.ZIndex = 8
+                Slider.Objects.ValueText.Font = 2
+                
+                Slider.Objects.Track = Drawing.new("Square")
+                Slider.Objects.Track.Size = Vector2.new(169, 4)
+                Slider.Objects.Track.Position = Vector2.new(0, 0)
+                Slider.Objects.Track.Color = Window.Theme.Element
+                Slider.Objects.Track.Filled = true
+                Slider.Objects.Track.Visible = false
+                Slider.Objects.Track.ZIndex = 8
+                
+                Slider.Objects.Fill = Drawing.new("Square")
+                Slider.Objects.Fill.Size = Vector2.new(0, 4)
+                Slider.Objects.Fill.Position = Vector2.new(0, 0)
+                Slider.Objects.Fill.Color = Window.Theme.Accent
+                Slider.Objects.Fill.Filled = true
+                Slider.Objects.Fill.Visible = false
+                Slider.Objects.Fill.ZIndex = 9
+                
+                Slider.Objects.Thumb = Drawing.new("Circle")
+                Slider.Objects.Thumb.Radius = 6
+                Slider.Objects.Thumb.Position = Vector2.new(0, 0)
+                Slider.Objects.Thumb.Color = Window.Theme.Accent
+                Slider.Objects.Thumb.Filled = true
+                Slider.Objects.Thumb.Visible = false
+                Slider.Objects.Thumb.ZIndex = 10
+                
+                Slider.Objects.ThumbBorder = Drawing.new("Circle")
+                Slider.Objects.ThumbBorder.Radius = 7
+                Slider.Objects.ThumbBorder.Position = Vector2.new(0, 0)
+                Slider.Objects.ThumbBorder.Color = Window.Theme.Border
+                Slider.Objects.ThumbBorder.Filled = true
+                Slider.Objects.ThumbBorder.Transparency = 0.3
+                Slider.Objects.ThumbBorder.Visible = false
+                Slider.Objects.ThumbBorder.ZIndex = 9
+                
+                function Slider:GetHeight()
+                    return 40
+                end
+                
+                function Slider:UpdatePosition(pos)
+                    Slider.Objects.Text.Position = pos + Vector2.new(5, 0)
+                    Slider.Objects.ValueText.Position = pos + Vector2.new(154, 0)
+                    Slider.Objects.Track.Position = pos + Vector2.new(0, 20)
+                    Slider.Objects.Fill.Position = pos + Vector2.new(0, 20)
+                    
+                    local percent = (Slider.Value - Slider.Min) / (Slider.Max - Slider.Min)
+                    local fillWidth = 169 * percent
+                    Slider.Objects.Fill.Size = Vector2.new(fillWidth, 4)
+                    Slider.Objects.Thumb.Position = pos + Vector2.new(fillWidth, 22)
+                    Slider.Objects.ThumbBorder.Position = pos + Vector2.new(fillWidth, 22)
+                end
+                
+                function Slider:Show()
+                    Slider.Visible = true
+                    Slider.Objects.Text.Visible = true
+                    Slider.Objects.ValueText.Visible = true
+                    Slider.Objects.Track.Visible = true
+                    Slider.Objects.Fill.Visible = true
+                    Slider.Objects.Thumb.Visible = true
+                    Slider.Objects.ThumbBorder.Visible = true
+                end
+                
+                function Slider:Hide()
+                    Slider.Visible = false
+                    Slider.Objects.Text.Visible = false
+                    Slider.Objects.ValueText.Visible = false
+                    Slider.Objects.Track.Visible = false
+                    Slider.Objects.Fill.Visible = false
+                    Slider.Objects.Thumb.Visible = false
+                    Slider.Objects.ThumbBorder.Visible = false
+                end
+                
+                function Slider:SetValue(value)
+                    Slider.Value = math.clamp(value, Slider.Min, Slider.Max)
+                    Slider.Objects.ValueText.Text = tostring(math.floor(Slider.Value)) .. Slider.Suffix
+                    
+                    local percent = (Slider.Value - Slider.Min) / (Slider.Max - Slider.Min)
+                    local fillWidth = 169 * percent
+                    Slider.Objects.Fill.Size = Vector2.new(fillWidth, 4)
+                    
+                    local basePos = Slider.Objects.Track.Position
+                    Slider.Objects.Thumb.Position = Vector2.new(basePos.X + fillWidth, basePos.Y + 2)
+                    Slider.Objects.ThumbBorder.Position = Vector2.new(basePos.X + fillWidth, basePos.Y + 2)
+                    
+                    pcall(Slider.Callback, Slider.Value)
+                end
+                
+                table.insert(Section.Elements, Slider)
+                return Slider
+            end
+            
+            function Section:AddDropdown(options)
+                local Dropdown = {
+                    Name = options.Name or "Dropdown",
+                    Options = options.Options or {},
+                    Default = options.Default or "",
+                    Callback = options.Callback or function() end,
+                    Value = options.Default or "",
+                    Section = Section,
+                    Objects = {},
+                    Visible = false,
+                    Open = false,
+                    OptionsVisible = {}
+                }
+                
+                Dropdown.Objects.Text = Drawing.new("Text")
+                Dropdown.Objects.Text.Text = Dropdown.Name
+                Dropdown.Objects.Text.Size = 13
+                Dropdown.Objects.Text.Position = Vector2.new(0, 0)
+                Dropdown.Objects.Text.Color = Window.Theme.Text
+                Dropdown.Objects.Text.Center = false
+                Dropdown.Objects.Text.Outline = true
+                Dropdown.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Dropdown.Objects.Text.Visible = false
+                Dropdown.Objects.Text.ZIndex = 8
+                Dropdown.Objects.Text.Font = 2
+                
+                Dropdown.Objects.Box = Drawing.new("Square")
+                Dropdown.Objects.Box.Size = Vector2.new(169, 25)
+                Dropdown.Objects.Box.Position = Vector2.new(0, 0)
+                Dropdown.Objects.Box.Color = Window.Theme.Element
+                Dropdown.Objects.Box.Filled = true
+                Dropdown.Objects.Box.Visible = false
+                Dropdown.Objects.Box.ZIndex = 8
+                
+                Dropdown.Objects.BoxBorder = Drawing.new("Square")
+                Dropdown.Objects.BoxBorder.Size = Vector2.new(169, 25)
+                Dropdown.Objects.BoxBorder.Position = Vector2.new(0, 0)
+                Dropdown.Objects.BoxBorder.Color = Window.Theme.Border
+                Dropdown.Objects.BoxBorder.Thickness = 1
+                Dropdown.Objects.BoxBorder.Filled = false
+                Dropdown.Objects.BoxBorder.Visible = false
+                Dropdown.Objects.BoxBorder.ZIndex = 9
+                
+                Dropdown.Objects.ValueText = Drawing.new("Text")
+                Dropdown.Objects.ValueText.Text = Dropdown.Value ~= "" and Dropdown.Value or "None"
+                Dropdown.Objects.ValueText.Size = 12
+                Dropdown.Objects.ValueText.Position = Vector2.new(0, 0)
+                Dropdown.Objects.ValueText.Color = Window.Theme.TextDark
+                Dropdown.Objects.ValueText.Center = false
+                Dropdown.Objects.ValueText.Outline = true
+                Dropdown.Objects.ValueText.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Dropdown.Objects.ValueText.Visible = false
+                Dropdown.Objects.ValueText.ZIndex = 10
+                Dropdown.Objects.ValueText.Font = 2
+                
+                Dropdown.Objects.Arrow = Drawing.new("Triangle")
+                Dropdown.Objects.Arrow.PointA = Vector2.new(0, 0)
+                Dropdown.Objects.Arrow.PointB = Vector2.new(0, 0)
+                Dropdown.Objects.Arrow.PointC = Vector2.new(0, 0)
+                Dropdown.Objects.Arrow.Color = Window.Theme.Text
+                Dropdown.Objects.Arrow.Filled = true
+                Dropdown.Objects.Arrow.Visible = false
+                Dropdown.Objects.Arrow.ZIndex = 10
+                
+                function Dropdown:GetHeight()
+                    local height = 45
+                    if Dropdown.Open then
+                        height = height + math.min(#Dropdown.Options * 22, 110)
+                    end
+                    return height
+                end
+                
+                function Dropdown:UpdatePosition(pos)
+                    Dropdown.Objects.Text.Position = pos + Vector2.new(5, 0)
+                    Dropdown.Objects.Box.Position = pos + Vector2.new(0, 18)
+                    Dropdown.Objects.BoxBorder.Position = pos + Vector2.new(0, 18)
+                    Dropdown.Objects.ValueText.Position = pos + Vector2.new(5, 24)
+                    
+                    local arrowPos = pos + Vector2.new(155, 28)
+                    Dropdown.Objects.Arrow.PointA = arrowPos
+                    Dropdown.Objects.Arrow.PointB = arrowPos + Vector2.new(5, 0)
+                    Dropdown.Objects.Arrow.PointC = arrowPos + Vector2.new(2.5, 4)
+                    
+                    if Dropdown.Open then
+                        for i, option in ipairs(Dropdown.Options) do
+                            if Dropdown.OptionsVisible[i] then
+                                local optionY = 22 * (i - 1)
+                                Dropdown.OptionsVisible[i].Background.Position = pos + Vector2.new(0, 45 + optionY)
+                                Dropdown.OptionsVisible[i].Text.Position = pos + Vector2.new(5, 50 + optionY)
+                            end
+                        end
+                    end
+                end
+                
+                function Dropdown:Show()
+                    Dropdown.Visible = true
+                    Dropdown.Objects.Text.Visible = true
+                    Dropdown.Objects.Box.Visible = true
+                    Dropdown.Objects.BoxBorder.Visible = true
+                    Dropdown.Objects.ValueText.Visible = true
+                    Dropdown.Objects.Arrow.Visible = true
+                end
+                
+                function Dropdown:Hide()
+                    Dropdown.Visible = false
+                    Dropdown.Objects.Text.Visible = false
+                    Dropdown.Objects.Box.Visible = false
+                    Dropdown.Objects.BoxBorder.Visible = false
+                    Dropdown.Objects.ValueText.Visible = false
+                    Dropdown.Objects.Arrow.Visible = false
+                    Dropdown:CloseDropdown()
+                end
+                
+                function Dropdown:SetValue(value)
+                    Dropdown.Value = value
+                    Dropdown.Objects.ValueText.Text = value ~= "" and value or "None"
+                    Dropdown.Objects.ValueText.Color = value ~= "" and Window.Theme.Text or Window.Theme.TextDark
+                    pcall(Dropdown.Callback, value)
+                end
+                
+                function Dropdown:OpenDropdown()
+                    if Dropdown.Open then return end
+                    Dropdown.Open = true
+                    
+                    for i, option in ipairs(Dropdown.Options) do
+                        local optionY = 22 * (i - 1)
+                        local basePos = Dropdown.Objects.Box.Position
+                        
+                        local optionBg = Drawing.new("Square")
+                        optionBg.Size = Vector2.new(169, 20)
+                        optionBg.Position = basePos + Vector2.new(0, 27 + optionY)
+                        optionBg.Color = Window.Theme.Element
+                        optionBg.Filled = true
+                        optionBg.Visible = true
+                        optionBg.ZIndex = 12
+                        
+                        local optionText = Drawing.new("Text")
+                        optionText.Text = option
+                        optionText.Size = 12
+                        optionText.Position = basePos + Vector2.new(5, 32 + optionY)
+                        optionText.Color = Window.Theme.Text
+                        optionText.Center = false
+                        optionText.Outline = true
+                        optionText.OutlineColor = Color3.fromRGB(0, 0, 0)
+                        optionText.Visible = true
+                        optionText.ZIndex = 13
+                        optionText.Font = 2
+                        
+                        Dropdown.OptionsVisible[i] = {
+                            Background = optionBg,
+                            Text = optionText
+                        }
+                    end
+                    
+                    Section:UpdatePositions()
+                end
+                
+                function Dropdown:CloseDropdown()
+                    if not Dropdown.Open then return end
+                    Dropdown.Open = false
+                    
+                    for i, vis in pairs(Dropdown.OptionsVisible) do
+                        if vis.Background then vis.Background:Remove() end
+                        if vis.Text then vis.Text:Remove() end
+                    end
+                    Dropdown.OptionsVisible = {}
+                    
+                    Section:UpdatePositions()
+                end
+                
+                table.insert(Section.Elements, Dropdown)
+                return Dropdown
+            end
+            
+            function Section:AddTextbox(options)
+                local Textbox = {
+                    Name = options.Name or "Textbox",
+                    Default = options.Default or "",
+                    Placeholder = options.Placeholder or "Enter text...",
+                    Callback = options.Callback or function() end,
+                    Value = options.Default or "",
+                    Section = Section,
+                    Objects = {},
+                    Visible = false,
+                    Focused = false
+                }
+                
+                Textbox.Objects.Text = Drawing.new("Text")
+                Textbox.Objects.Text.Text = Textbox.Name
+                Textbox.Objects.Text.Size = 13
+                Textbox.Objects.Text.Position = Vector2.new(0, 0)
+                Textbox.Objects.Text.Color = Window.Theme.Text
+                Textbox.Objects.Text.Center = false
+                Textbox.Objects.Text.Outline = true
+                Textbox.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Textbox.Objects.Text.Visible = false
+                Textbox.Objects.Text.ZIndex = 8
+                Textbox.Objects.Text.Font = 2
+                
+                Textbox.Objects.Box = Drawing.new("Square")
+                Textbox.Objects.Box.Size = Vector2.new(169, 25)
+                Textbox.Objects.Box.Position = Vector2.new(0, 0)
+                Textbox.Objects.Box.Color = Window.Theme.Element
+                Textbox.Objects.Box.Filled = true
+                Textbox.Objects.Box.Visible = false
+                Textbox.Objects.Box.ZIndex = 8
+                
+                Textbox.Objects.BoxBorder = Drawing.new("Square")
+                Textbox.Objects.BoxBorder.Size = Vector2.new(169, 25)
+                Textbox.Objects.BoxBorder.Position = Vector2.new(0, 0)
+                Textbox.Objects.BoxBorder.Color = Window.Theme.Border
+                Textbox.Objects.BoxBorder.Thickness = 1
+                Textbox.Objects.BoxBorder.Filled = false
+                Textbox.Objects.BoxBorder.Visible = false
+                Textbox.Objects.BoxBorder.ZIndex = 9
+                
+                Textbox.Objects.ValueText = Drawing.new("Text")
+                Textbox.Objects.ValueText.Text = Textbox.Value ~= "" and Textbox.Value or Textbox.Placeholder
+                Textbox.Objects.ValueText.Size = 12
+                Textbox.Objects.ValueText.Position = Vector2.new(0, 0)
+                Textbox.Objects.ValueText.Color = Textbox.Value ~= "" and Window.Theme.Text or Window.Theme.TextDark
+                Textbox.Objects.ValueText.Center = false
+                Textbox.Objects.ValueText.Outline = true
+                Textbox.Objects.ValueText.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Textbox.Objects.ValueText.Visible = false
+                Textbox.Objects.ValueText.ZIndex = 10
+                Textbox.Objects.ValueText.Font = 2
+                
+                function Textbox:GetHeight()
+                    return 45
+                end
+                
+                function Textbox:UpdatePosition(pos)
+                    Textbox.Objects.Text.Position = pos + Vector2.new(5, 0)
+                    Textbox.Objects.Box.Position = pos + Vector2.new(0, 18)
+                    Textbox.Objects.BoxBorder.Position = pos + Vector2.new(0, 18)
+                    Textbox.Objects.ValueText.Position = pos + Vector2.new(5, 24)
+                end
+                
+                function Textbox:Show()
+                    Textbox.Visible = true
+                    Textbox.Objects.Text.Visible = true
+                    Textbox.Objects.Box.Visible = true
+                    Textbox.Objects.BoxBorder.Visible = true
+                    Textbox.Objects.ValueText.Visible = true
+                end
+                
+                function Textbox:Hide()
+                    Textbox.Visible = false
+                    Textbox.Objects.Text.Visible = false
+                    Textbox.Objects.Box.Visible = false
+                    Textbox.Objects.BoxBorder.Visible = false
+                    Textbox.Objects.ValueText.Visible = false
+                end
+                
+                function Textbox:SetValue(value)
+                    Textbox.Value = value
+                    Textbox.Objects.ValueText.Text = value ~= "" and value or Textbox.Placeholder
+                    Textbox.Objects.ValueText.Color = value ~= "" and Window.Theme.Text or Window.Theme.TextDark
+                    pcall(Textbox.Callback, value)
+                end
+                
+                table.insert(Section.Elements, Textbox)
+                return Textbox
+            end
+            
+            function Section:AddLabel(options)
+                local Label = {
+                    Text = options.Text or "Label",
+                    Section = Section,
+                    Objects = {},
+                    Visible = false
+                }
+                
+                Label.Objects.Text = Drawing.new("Text")
+                Label.Objects.Text.Text = Label.Text
+                Label.Objects.Text.Size = 13
+                Label.Objects.Text.Position = Vector2.new(0, 0)
+                Label.Objects.Text.Color = Window.Theme.Text
+                Label.Objects.Text.Center = false
+                Label.Objects.Text.Outline = true
+                Label.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Label.Objects.Text.Visible = false
+                Label.Objects.Text.ZIndex = 8
+                Label.Objects.Text.Font = 2
+                
+                function Label:GetHeight()
+                    return 20
+                end
+                
+                function Label:UpdatePosition(pos)
+                    Label.Objects.Text.Position = pos + Vector2.new(5, 0)
+                end
+                
+                function Label:Show()
+                    Label.Visible = true
+                    Label.Objects.Text.Visible = true
+                end
+                
+                function Label:Hide()
+                    Label.Visible = false
+                    Label.Objects.Text.Visible = false
+                end
+                
+                function Label:SetText(text)
+                    Label.Text = text
+                    Label.Objects.Text.Text = text
+                end
+                
+                table.insert(Section.Elements, Label)
+                return Label
+            end
+            
+            function Section:AddDivider()
+                local Divider = {
+                    Section = Section,
+                    Objects = {},
+                    Visible = false
+                }
+                
+                Divider.Objects.Line = Drawing.new("Line")
+                Divider.Objects.Line.From = Vector2.new(0, 0)
+                Divider.Objects.Line.To = Vector2.new(0, 0)
+                Divider.Objects.Line.Color = Window.Theme.Border
+                Divider.Objects.Line.Thickness = 1
+                Divider.Objects.Line.Visible = false
+                Divider.Objects.Line.ZIndex = 8
+                
+                function Divider:GetHeight()
+                    return 10
+                end
+                
+                function Divider:UpdatePosition(pos)
+                    Divider.Objects.Line.From = pos + Vector2.new(5, 5)
+                    Divider.Objects.Line.To = pos + Vector2.new(164, 5)
+                end
+                
+                function Divider:Show()
+                    Divider.Visible = true
+                    Divider.Objects.Line.Visible = true
+                end
+                
+                function Divider:Hide()
+                    Divider.Visible = false
+                    Divider.Objects.Line.Visible = false
+                end
+                
+                table.insert(Section.Elements, Divider)
+                return Divider
+            end
+            
+            function Section:AddColorpicker(options)
+                local Colorpicker = {
+                    Name = options.Name or "Colorpicker",
+                    Default = options.Default or Color3.fromRGB(255, 255, 255),
+                    Callback = options.Callback or function() end,
+                    Value = options.Default or Color3.fromRGB(255, 255, 255),
+                    Section = Section,
+                    Objects = {},
+                    Visible = false,
+                    Open = false,
+                    PickerObjects = {}
+                }
+                
+                Colorpicker.Objects.Text = Drawing.new("Text")
+                Colorpicker.Objects.Text.Text = Colorpicker.Name
+                Colorpicker.Objects.Text.Size = 13
+                Colorpicker.Objects.Text.Position = Vector2.new(0, 0)
+                Colorpicker.Objects.Text.Color = Window.Theme.Text
+                Colorpicker.Objects.Text.Center = false
+                Colorpicker.Objects.Text.Outline = true
+                Colorpicker.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Colorpicker.Objects.Text.Visible = false
+                Colorpicker.Objects.Text.ZIndex = 8
+                Colorpicker.Objects.Text.Font = 2
+                
+                Colorpicker.Objects.Box = Drawing.new("Square")
+                Colorpicker.Objects.Box.Size = Vector2.new(30, 15)
+                Colorpicker.Objects.Box.Position = Vector2.new(0, 0)
+                Colorpicker.Objects.Box.Color = Colorpicker.Value
+                Colorpicker.Objects.Box.Filled = true
+                Colorpicker.Objects.Box.Visible = false
+                Colorpicker.Objects.Box.ZIndex = 9
+                
+                Colorpicker.Objects.BoxBorder = Drawing.new("Square")
+                Colorpicker.Objects.BoxBorder.Size = Vector2.new(30, 15)
+                Colorpicker.Objects.BoxBorder.Position = Vector2.new(0, 0)
+                Colorpicker.Objects.BoxBorder.Color = Window.Theme.Border
+                Colorpicker.Objects.BoxBorder.Thickness = 1
+                Colorpicker.Objects.BoxBorder.Filled = false
+                Colorpicker.Objects.BoxBorder.Visible = false
+                Colorpicker.Objects.BoxBorder.ZIndex = 10
+                
+                function Colorpicker:GetHeight()
+                    return 25
+                end
+                
+                function Colorpicker:UpdatePosition(pos)
+                    Colorpicker.Objects.Text.Position = pos + Vector2.new(5, 5)
+                    Colorpicker.Objects.Box.Position = pos + Vector2.new(134, 5)
+                    Colorpicker.Objects.BoxBorder.Position = pos + Vector2.new(134, 5)
+                end
+                
+                function Colorpicker:Show()
+                    Colorpicker.Visible = true
+                    Colorpicker.Objects.Text.Visible = true
+                    Colorpicker.Objects.Box.Visible = true
+                    Colorpicker.Objects.BoxBorder.Visible = true
+                end
+                
+                function Colorpicker:Hide()
+                    Colorpicker.Visible = false
+                    Colorpicker.Objects.Text.Visible = false
+                    Colorpicker.Objects.Box.Visible = false
+                    Colorpicker.Objects.BoxBorder.Visible = false
+                end
+                
+                function Colorpicker:SetValue(color)
+                    Colorpicker.Value = color
+                    Colorpicker.Objects.Box.Color = color
+                    pcall(Colorpicker.Callback, color)
+                end
+                
+                table.insert(Section.Elements, Colorpicker)
+                return Colorpicker
+            end
+            
+            function Section:AddKeybind(options)
+                local Keybind = {
+                    Name = options.Name or "Keybind",
+                    Default = options.Default or Enum.KeyCode.E,
+                    Callback = options.Callback or function() end,
+                    Value = options.Default or Enum.KeyCode.E,
+                    Section = Section,
+                    Objects = {},
+                    Visible = false,
+                    Binding = false
+                }
+                
+                Keybind.Objects.Text = Drawing.new("Text")
+                Keybind.Objects.Text.Text = Keybind.Name
+                Keybind.Objects.Text.Size = 13
+                Keybind.Objects.Text.Position = Vector2.new(0, 0)
+                Keybind.Objects.Text.Color = Window.Theme.Text
+                Keybind.Objects.Text.Center = false
+                Keybind.Objects.Text.Outline = true
+                Keybind.Objects.Text.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Keybind.Objects.Text.Visible = false
+                Keybind.Objects.Text.ZIndex = 8
+                Keybind.Objects.Text.Font = 2
+                
+                Keybind.Objects.Box = Drawing.new("Square")
+                Keybind.Objects.Box.Size = Vector2.new(45, 18)
+                Keybind.Objects.Box.Position = Vector2.new(0, 0)
+                Keybind.Objects.Box.Color = Window.Theme.Element
+                Keybind.Objects.Box.Filled = true
+                Keybind.Objects.Box.Visible = false
+                Keybind.Objects.Box.ZIndex = 8
+                
+                Keybind.Objects.BoxBorder = Drawing.new("Square")
+                Keybind.Objects.BoxBorder.Size = Vector2.new(45, 18)
+                Keybind.Objects.BoxBorder.Position = Vector2.new(0, 0)
+                Keybind.Objects.BoxBorder.Color = Window.Theme.Border
+                Keybind.Objects.BoxBorder.Thickness = 1
+                Keybind.Objects.BoxBorder.Filled = false
+                Keybind.Objects.BoxBorder.Visible = false
+                Keybind.Objects.BoxBorder.ZIndex = 9
+                
+                Keybind.Objects.KeyText = Drawing.new("Text")
+                Keybind.Objects.KeyText.Text = Keybind.Value.Name
+                Keybind.Objects.KeyText.Size = 11
+                Keybind.Objects.KeyText.Position = Vector2.new(0, 0)
+                Keybind.Objects.KeyText.Color = Window.Theme.Text
+                Keybind.Objects.KeyText.Center = true
+                Keybind.Objects.KeyText.Outline = true
+                Keybind.Objects.KeyText.OutlineColor = Color3.fromRGB(0, 0, 0)
+                Keybind.Objects.KeyText.Visible = false
+                Keybind.Objects.KeyText.ZIndex = 10
+                Keybind.Objects.KeyText.Font = 2
+                
+                function Keybind:GetHeight()
+                    return 25
+                end
+                
+                function Keybind:UpdatePosition(pos)
+                    Keybind.Objects.Text.Position = pos + Vector2.new(5, 3)
+                    Keybind.Objects.Box.Position = pos + Vector2.new(119, 3)
+                    Keybind.Objects.BoxBorder.Position = pos + Vector2.new(119, 3)
+                    Keybind.Objects.KeyText.Position = pos + Vector2.new(141.5, 6)
+                end
+                
+                function Keybind:Show()
+                    Keybind.Visible = true
+                    Keybind.Objects.Text.Visible = true
+                    Keybind.Objects.Box.Visible = true
+                    Keybind.Objects.BoxBorder.Visible = true
+                    Keybind.Objects.KeyText.Visible = true
+                end
+                
+                function Keybind:Hide()
+                    Keybind.Visible = false
+                    Keybind.Objects.Text.Visible = false
+                    Keybind.Objects.Box.Visible = false
+                    Keybind.Objects.BoxBorder.Visible = false
+                    Keybind.Objects.KeyText.Visible = false
+                end
+                
+                function Keybind:SetValue(key)
+                    Keybind.Value = key
+                    Keybind.Objects.KeyText.Text = key.Name
+                end
+                
+                table.insert(Section.Elements, Keybind)
+                return Keybind
+            end
+            
+            Section.Index = #Tab.Sections + 1
+            table.insert(Tab.Sections, Section)
+            Section:UpdatePositions()
+            return Section
+        end
+        
+        table.insert(Window.Tabs, Tab)
+        
+        if #Window.Tabs == 1 then
+            Tab:Activate()
+        end
+        
+        return Tab
+    end
+    
+    function Window:Toggle()
+        Window.Visible = not Window.Visible
+        
+        for _, obj in pairs(Window.Objects) do
+            if obj then
+                obj.Visible = Window.Visible
+            end
+        end
+        
+        if Window.CurrentTab then
+            for _, section in pairs(Window.CurrentTab.Sections) do
+                if Window.Visible then
+                    section:Show()
+                else
+                    section:Hide()
+                end
+            end
+        end
+    end
+    
+    function Window:Destroy()
+        for _, obj in pairs(Window.Objects) do
+            if obj and obj.Remove then
+                obj:Remove()
+            end
+        end
+        
+        for _, tab in pairs(Window.Tabs) do
+            for _, obj in pairs(tab.Objects) do
+                if obj and obj.Remove then
+                    obj:Remove()
+                end
+            end
+            
+            for _, section in pairs(tab.Sections) do
+                for _, obj in pairs(section.Objects) do
+                    if obj and obj.Remove then
+                        obj:Remove()
+                    end
+                end
+                
+                for _, element in pairs(section.Elements) do
+                    for _, obj in pairs(element.Objects) do
+                        if obj and obj.Remove then
+                            obj:Remove()
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return Window
+end
+
+-- Input Handler
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+function DrawingLib:Init(window)
+    local mousePos = Vector2.new(0, 0)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            mousePos = Vector2.new(input.Position.X, input.Position.Y)
+            
+            -- Handle window dragging
+            if window.Dragging then
+                window.Position = mousePos - window.DragOffset
+                window:UpdatePositions()
+            end
+            
+            -- Handle slider dragging
+            if window.CurrentTab then
+                for _, section in pairs(window.CurrentTab.Sections) do
+                    for _, element in pairs(section.Elements) do
+                        if element.Dragging and element.Objects.Track then
+                            local trackPos = element.Objects.Track.Position
+                            local relativeX = math.clamp(mousePos.X - trackPos.X, 0, 169)
+                            local percent = relativeX / 169
+                            local value = element.Min + (element.Max - element.Min) * percent
+                            element:SetValue(value)
+                        end
+                    end
+                end
+            end
+            
+            -- Handle hover effects
+            if window.Visible then
+                -- Close button hover
+                local closeBtn = window.Objects.CloseButton
+                if IsMouseOver(closeBtn.Position.X, closeBtn.Position.Y, closeBtn.Size.X, closeBtn.Size.Y, mousePos) then
+                    closeBtn.Color = window.Theme.Error
+                else
+                    closeBtn.Color = window.Theme.Element
+                end
+                
+                -- Tab hover effects
+                for _, tab in pairs(window.Tabs) do
+                    if not tab.Active then
+                        local tabBg = tab.Objects.Background
+                        if IsMouseOver(tabBg.Position.X, tabBg.Position.Y, tabBg.Size.X, tabBg.Size.Y, mousePos) then
+                            tabBg.Color = window.Theme.ElementHover
+                        else
+                            tabBg.Color = window.Theme.Element
+                        end
+                    end
+                end
+                
+                -- Element hover effects
+                if window.CurrentTab then
+                    for _, section in pairs(window.CurrentTab.Sections) do
+                        for _, element in pairs(section.Elements) do
+                            if element.Objects.Background and element.Visible then
+                                local bg = element.Objects.Background
+                                if IsMouseOver(bg.Position.X, bg.Position.Y, bg.Size.X, bg.Size.Y, mousePos) then
+                                    if element.Name == "Toggle" then
+                                        element.Hovered = true
+                                        bg.Color = window.Theme.ElementHover
+                                    elseif element.Name == "Button" then
+                                        element.Hovered = true
+                                        bg.Color = window.Theme.AccentHover
+                                    end
+                                else
+                                    element.Hovered = false
+                                    if element.Name == "Toggle" then
+                                        bg.Color = window.Theme.Element
+                                    elseif element.Name == "Button" then
+                                        bg.Color = window.Theme.Accent
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            -- Check close button
+            local closeBtn = window.Objects.CloseButton
+            if IsMouseOver(closeBtn.Position.X, closeBtn.Position.Y, closeBtn.Size.X, closeBtn.Size.Y, mousePos) then
+                window:Toggle()
+                return
+            end
+            
+            -- Check top bar for dragging
+            local topBar = window.Objects.TopBar
+            if IsMouseOver(topBar.Position.X, topBar.Position.Y, topBar.Size.X - 35, topBar.Size.Y, mousePos) then
+                window.Dragging = true
+                window.DragOffset = mousePos - window.Position
+                return
+            end
+            
+            -- Check tabs
+            for _, tab in pairs(window.Tabs) do
+                local tabBg = tab.Objects.Background
+                if IsMouseOver(tabBg.Position.X, tabBg.Position.Y, tabBg.Size.X, tabBg.Size.Y, mousePos) then
+                    tab:Activate()
+                    return
+                end
+            end
+            
+            -- Check elements
+            if window.CurrentTab then
+                for _, section in pairs(window.CurrentTab.Sections) do
+                    for _, element in pairs(section.Elements) do
+                        if element.Visible then
+                            -- Toggle
+                            if element.Objects.Box and element.Value ~= nil and type(element.Value) == "boolean" then
+                                local box = element.Objects.Box
+                                if IsMouseOver(box.Position.X, box.Position.Y, box.Size.X, box.Size.Y, mousePos) then
+                                    element:SetValue(not element.Value)
+                                    return
+                                end
+                            end
+                            
+                            -- Button
+                            if element.Objects.Background and element.Name and not element.Objects.Box then
+                                local bg = element.Objects.Background
+                                if IsMouseOver(bg.Position.X, bg.Position.Y, bg.Size.X, bg.Size.Y, mousePos) and element.Callback then
+                                    pcall(element.Callback)
+                                    return
+                                end
+                            end
+                            
+                            -- Slider
+                            if element.Objects.Track and element.Min then
+                                local track = element.Objects.Track
+                                if IsMouseOver(track.Position.X, track.Position.Y, track.Size.X, track.Size.Y, mousePos) then
+                                    element.Dragging = true
+                                    local relativeX = math.clamp(mousePos.X - track.Position.X, 0, 169)
+                                    local percent = relativeX / 169
+                                    local value = element.Min + (element.Max - element.Min) * percent
+                                    element:SetValue(value)
+                                    return
+                                end
+                            end
+                            
+                            -- Dropdown
+                            if element.Open ~= nil and element.Options then
+                                local box = element.Objects.Box
+                                if IsMouseOver(box.Position.X, box.Position.Y, box.Size.X, box.Size.Y, mousePos) then
+                                    if element.Open then
+                                        element:CloseDropdown()
+                                    else
+                                        element:OpenDropdown()
+                                    end
+                                    return
+                                end
+                                
+                                if element.Open and element.OptionsVisible then
+                                    for i, vis in pairs(element.OptionsVisible) do
+                                        local optBg = vis.Background
+                                        if IsMouseOver(optBg.Position.X, optBg.Position.Y, optBg.Size.X, optBg.Size.Y, mousePos) then
+                                            element:SetValue(element.Options[i])
+                                            element:CloseDropdown()
+                                            return
+                                        end
+                                    end
+                                end
+                            end
+                            
+                            -- Textbox
+                            if element.Focused ~= nil and element.Placeholder then
+                                local box = element.Objects.Box
+                                if IsMouseOver(box.Position.X, box.Position.Y, box.Size.X, box.Size.Y, mousePos) then
+                                    element.Focused = true
+                                    element.Objects.BoxBorder.Color = window.Theme.Accent
+                                    window.FocusedElement = element
+                                else
+                                    element.Focused = false
+                                    element.Objects.BoxBorder.Color = window.Theme.Border
+                                end
+                            end
+                            
+                            -- Keybind
+                            if element.Binding ~= nil and element.Value and element.Value.Name then
+                                local box = element.Objects.Box
+                                if IsMouseOver(box.Position.X, box.Position.Y, box.Size.X, box.Size.Y, mousePos) then
+                                    element.Binding = true
+                                    element.Objects.KeyText.Text = "..."
+                                    element.Objects.Box.Color = window.Theme.Accent
+                                    return
+                                end
+                            end
+                            
+                            -- Colorpicker (simplified click to cycle through preset colors)
+                            if element.Objects.Box and element.Objects.Box.Color and element.Value and type(element.Value) == "userdata" then
+                                local box = element.Objects.Box
+                                if IsMouseOver(box.Position.X, box.Position.Y, box.Size.X, box.Size.Y, mousePos) then
+                                    local presetColors = {
+                                        Color3.fromRGB(255, 255, 255),
+                                        Color3.fromRGB(255, 0, 0),
+                                        Color3.fromRGB(0, 255, 0),
+                                        Color3.fromRGB(0, 0, 255),
+                                        Color3.fromRGB(255, 255, 0),
+                                        Color3.fromRGB(255, 0, 255),
+                                        Color3.fromRGB(0, 255, 255),
+                                        Color3.fromRGB(255, 128, 0),
+                                        Color3.fromRGB(128, 0, 255),
+                                        Color3.fromRGB(0, 0, 0)
+                                    }
+                                    
+                                    local currentIndex = 1
+                                    for i, color in ipairs(presetColors) do
+                                        if element.Value == color then
+                                            currentIndex = i
+                                            break
+                                        end
+                                    end
+                                    
+                                    local nextIndex = (currentIndex % #presetColors) + 1
+                                    element:SetValue(presetColors[nextIndex])
+                                    return
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Keybind listening
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            if window.CurrentTab then
+                for _, section in pairs(window.CurrentTab.Sections) do
+                    for _, element in pairs(section.Elements) do
+                        if element.Binding then
+                            element.Binding = false
+                            element:SetValue(input.KeyCode)
+                            element.Objects.Box.Color = window.Theme.Element
+                            return
+                        end
+                    end
+                end
+            end
+            
+            -- Textbox input
+            if window.FocusedElement and window.FocusedElement.Focused then
+                local element = window.FocusedElement
+                
+                if input.KeyCode == Enum.KeyCode.Return then
+                    element.Focused = false
+                    element.Objects.BoxBorder.Color = window.Theme.Border
+                    window.FocusedElement = nil
+                    pcall(element.Callback, element.Value)
+                elseif input.KeyCode == Enum.KeyCode.Backspace then
+                    if #element.Value > 0 then
+                        element.Value = string.sub(element.Value, 1, -2)
+                        element:SetValue(element.Value)
+                    end
+                end
+            end
+        end
+        
+        -- Character input for textbox
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            if window.FocusedElement and window.FocusedElement.Focused then
+                local element = window.FocusedElement
+                local char = input.KeyCode.Name
+                
+                -- Convert KeyCode to character
+                if #char == 1 then
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
+                        element.Value = element.Value .. string.upper(char)
+                    else
+                        element.Value = element.Value .. string.lower(char)
+                    end
+                    element:SetValue(element.Value)
+                elseif char == "Space" then
+                    element.Value = element.Value .. " "
+                    element:SetValue(element.Value)
+                end
+            end
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            window.Dragging = false
+            
+            -- Stop slider dragging
+            if window.CurrentTab then
+                for _, section in pairs(window.CurrentTab.Sections) do
+                    for _, element in pairs(section.Elements) do
+                        if element.Dragging then
+                            element.Dragging = false
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- Keybind callbacks
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        if window.CurrentTab then
+            for _, section in pairs(window.CurrentTab.Sections) do
+                for _, element in pairs(section.Elements) do
+                    if element.Value and type(element.Value) == "userdata" and element.Value.Name then
+                        if input.KeyCode == element.Value then
+                            pcall(element.Callback, true)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if window.CurrentTab then
+            for _, section in pairs(window.CurrentTab.Sections) do
+                for _, element in pairs(section.Elements) do
+                    if element.Value and type(element.Value) == "userdata" and element.Value.Name then
+                        if input.KeyCode == element.Value then
+                            pcall(element.Callback, false)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+return DrawingLib
